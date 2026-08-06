@@ -27,11 +27,11 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, sm *state.Manager, runne
 
 // Artifact mirrors the config.xml artifact row.
 type Artifact struct {
-	Type     string
-	Filename string
-	Owner    string
-	Group    string
-	Mode     string
+	Type      string
+	Filename  string
+	Owner     string
+	FileGroup string
+	Mode      string
 }
 
 // Destination mirrors the config.xml destination row.
@@ -142,15 +142,15 @@ func (e *Engine) Run(ctx context.Context, d Deployment) error {
 					return e.record(d.ID, "failed", err)
 				}
 			}
-			if art.Owner != "" || art.Group != "" {
-				owner := art.Owner
-				if owner == "" {
-					owner = "root"
-				}
-				group := art.Group
-				if group == "" {
-					group = owner
-				}
+		if art.Owner != "" || art.FileGroup != "" {
+			owner := art.Owner
+			if owner == "" {
+				owner = "root"
+			}
+			group := art.FileGroup
+			if group == "" {
+				group = owner
+			}
 				cmd := fmt.Sprintf("chown %s:%s %s", owner, group, shellQuote(tmp))
 				if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
 					return e.record(d.ID, "failed", err)

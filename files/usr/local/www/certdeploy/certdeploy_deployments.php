@@ -54,7 +54,6 @@ display_top_tabs($tab_array);
 					<th><?=gettext('Name')?></th>
 					<th><?=gettext('Certificate')?></th>
 					<th><?=gettext('Host')?></th>
-					<th><?=gettext('User')?></th>
 					<th><?=gettext('State')?></th>
 					<th><?=gettext('Actions')?></th>
 				</tr>
@@ -77,15 +76,9 @@ if (count($deployments) > 0):
 					<td><?=htmlspecialchars($dep['name'] ?? '')?></td>
 					<td><?=htmlspecialchars($dep['certificate_name'] ?? '')?></td>
 					<td><?=htmlspecialchars($dep['host'] ?? '')?></td>
-					<td><?=htmlspecialchars($dep['user'] ?? '')?></td>
 					<td><?=htmlspecialchars($state)?></td>
 					<td>
-						<form method="post" style="display:inline">
-							<input type="hidden" name="id" value="<?=$id?>" />
-							<button type="submit" name="act" value="deploy" class="btn btn-xs btn-primary" title="<?=gettext('Deploy now')?>">
-								<i class="fa-solid fa-play"></i>
-							</button>
-						</form>
+						<a class="fa-solid fa-upload text-success" title="<?=gettext('Deploy now')?>" href="?act=deploy&amp;id=<?=$id?>" usepost></a>
 						<a class="fa-solid fa-pencil" title="<?=gettext('Edit')?>" href="/certdeploy/certdeploy_deployment_edit.php?id=<?=$id?>"></a>
 						<form method="post" style="display:inline">
 							<input type="hidden" name="id" value="<?=$id?>" />
@@ -100,7 +93,7 @@ if (count($deployments) > 0):
 else:
 ?>
 				<tr>
-					<td colspan="7">
+					<td colspan="6">
 						<?php print_info_box(gettext('No deployments configured. Add a deployment to push certificates to a remote host.'), 'warning'); ?>
 					</td>
 				</tr>

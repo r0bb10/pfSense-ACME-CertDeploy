@@ -86,58 +86,71 @@ $section->addInput(new Form_Input(
 	$pconfig['description'] ?? ''
 ));
 
-$section->addInput(new Form_Select(
-	'certificate_name',
-	gettext('ACME Certificate'),
-	$pconfig['certificate_name'] ?? '',
-	certdeploy_acme_certificate_options()
-));
-
 $form->add($section);
 
 // Target section
 $section = new Form_Section(gettext('Target Connection'));
 
-$section->addInput(new Form_Input(
+$group = new Form_Group(gettext('Host'));
+$group->add(new Form_Input(
 	'host',
 	gettext('Host'),
 	'text',
 	$pconfig['host'] ?? ''
-))->setHelp(gettext('Hostname or IP address of the remote SSH server.'));
+))->setHelp(gettext('Hostname or IP address of the remote SSH server.'))->setWidth(8);
 
-$section->addInput(new Form_Input(
+$group->add(new Form_Input(
 	'port',
 	gettext('Port'),
 	'number',
 	$pconfig['port'] ?? 22,
 	['min' => 1, 'max' => 65535]
-));
+))->setHelp(gettext('SSH port.'))->setWidth(2);
 
-$section->addInput(new Form_Input(
-	'user',
-	gettext('User'),
-	'text',
-	$pconfig['user'] ?? 'root'
-));
+$section->add($group);
 
 $section->addInput(new Form_Select(
 	'identity_id',
 	gettext('SSH Identity'),
 	$pconfig['identity_id'] ?? '',
 	certdeploy_identity_options()
-));
+))->setHelp(gettext('SSH identity (key pair and login user) to use for authentication. The identity name is used as the SSH login user.'));
 
-$section->addInput(new Form_Input(
+$group = new Form_Group(gettext('Host Key Fingerprint'));
+$group->add(new Form_Input(
 	'host_key_fingerprint',
-	gettext('Host Key Fingerprint'),
+	gettext('Fingerprint'),
 	'text',
 	$pconfig['host_key_fingerprint'] ?? ''
-))->setHelp(gettext('SHA256 fingerprint of the remote host key. Use the scan helper to populate this.'));
+))->setReadonly()->setHelp(gettext('SHA256 fingerprint of the remote host key. Automatically imported on first connect.'))->setWidth(8);
+
+$group->add((new Form_Button(
+	'clear_host_key',
+	gettext('Clear'),
+	null,
+	'fa-solid fa-eraser'
+))->addClass('btn-secondary btn-sm')->setAttribute('type', 'button')->setAttribute('id', 'clear_host_key')->setWidth(2));
+
+$section->add($group);
+
+$section->addInput(new Form_Checkbox(
+	'host_key_ignore_changes',
+	gettext('Ignore Changes'),
+	gettext('Accept changed host key fingerprints (disable strict host-key checking on mismatch)'),
+	($pconfig['host_key_ignore_changes'] ?? '') === 'on'
+));
 
 $form->add($section);
 
 // Files section
 $section = new Form_Section(gettext('Files'));
+
+$section->addInput(new Form_Select(
+	'certificate_name',
+	gettext('ACME Certificate'),
+	$pconfig['certificate_name'] ?? '',
+	certdeploy_acme_certificate_options()
+))->setHelp(gettext('ACME certificate to deploy to the remote host.'));
 
 $artifacts = $pconfig['artifacts']['row'] ?? [[]];
 $last = count($artifacts) - 1;
@@ -167,10 +180,10 @@ foreach ($artifacts as $c => $art) {
 	))->setWidth(2);
 
 	$group->add(new Form_Input(
-		'artifact_group' . $c,
+		'artifact_file_group' . $c,
 		gettext('Group'),
 		'text',
-		$art['group'] ?? ''
+		$art['file_group'] ?? ''
 	))->setWidth(2);
 
 	$group->add(new Form_Input(
@@ -355,6 +368,10 @@ print($form);
 events.push(function() {
 	// Standard pfSense repeatable row handling.
 	checkLastRow();
+
+	$('#clear_host_key').click(function() {
+		$('#host_key_fingerprint').val('');
+	});
 });
 //]]>
 </script>

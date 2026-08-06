@@ -59,16 +59,13 @@ function certdeploy_deployment_validate(&$post, &$input_errors) {
 	if (!is_numericint($post['port'] ?? '') || (int)$post['port'] < 1 || (int)$post['port'] > 65535) {
 		$input_errors[] = gettext('Port must be a number between 1 and 65535.');
 	}
-	if (($post['user'] ?? '') === '') {
-		$input_errors[] = gettext('User is required.');
-	}
 
 	$ident = $post['identity_id'] ?? '';
 	if ($ident === '' || !isset(certdeploy_identity_options()[$ident])) {
 		$input_errors[] = gettext('A valid SSH identity must be selected.');
 	}
 
-	$artifacts = certdeploy_parse_repeatables($post, ['artifact_type', 'artifact_filename', 'artifact_owner', 'artifact_group', 'artifact_mode']);
+	$artifacts = certdeploy_parse_repeatables($post, ['artifact_type', 'artifact_filename', 'artifact_owner', 'artifact_file_group', 'artifact_mode']);
 	if (empty($artifacts)) {
 		$input_errors[] = gettext('At least one artifact must be configured.');
 	}
@@ -116,10 +113,9 @@ function certdeploy_deployment_build($post, $old = []) {
 	$dep['certificate_name'] = $post['certificate_name'];
 	$dep['host'] = $post['host'];
 	$dep['port'] = (int)$post['port'];
-	$dep['user'] = $post['user'];
 	$dep['identity_id'] = $post['identity_id'];
 	$dep['host_key_fingerprint'] = $post['host_key_fingerprint'] ?? '';
-	$dep['host_key_policy'] = $post['host_key_policy'] ?? 'fingerprint';
+	$dep['host_key_ignore_changes'] = empty($post['host_key_ignore_changes']) ? 'off' : 'on';
 	$dep['connect_timeout'] = is_numericint($post['connect_timeout'] ?? '') ? (int)$post['connect_timeout'] : 0;
 	$dep['cmd_timeout'] = is_numericint($post['cmd_timeout'] ?? '') ? (int)$post['cmd_timeout'] : 0;
 	$dep['use_sftp'] = empty($post['use_sftp']) ? 'off' : 'on';
@@ -129,13 +125,13 @@ function certdeploy_deployment_build($post, $old = []) {
 	$dep['readiness_check'] = empty($post['readiness_check']) ? 'off' : 'on';
 
 	$dep['artifacts'] = ['row' => []];
-	$artifacts = certdeploy_parse_repeatables($post, ['artifact_type', 'artifact_filename', 'artifact_owner', 'artifact_group', 'artifact_mode']);
+	$artifacts = certdeploy_parse_repeatables($post, ['artifact_type', 'artifact_filename', 'artifact_owner', 'artifact_file_group', 'artifact_mode']);
 	foreach ($artifacts as $a) {
 		$dep['artifacts']['row'][] = [
 			'type' => $a['artifact_type'],
 			'filename' => $a['artifact_filename'],
 			'owner' => $a['artifact_owner'] ?? '',
-			'group' => $a['artifact_group'] ?? '',
+			'file_group' => $a['artifact_file_group'] ?? '',
 			'mode' => $a['artifact_mode'] ?? '',
 		];
 	}
