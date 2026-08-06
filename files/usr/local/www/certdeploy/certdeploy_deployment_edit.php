@@ -20,7 +20,7 @@ if ($id !== '') {
 	}
 }
 
-if ($_POST && isset($_POST['act']) && $_POST['act'] === 'save') {
+if ($_POST && isset($_POST['save'])) {
 	$input_errors = [];
 	certdeploy_deployment_validate($_POST, $input_errors);
 	if (empty($input_errors)) {
@@ -157,7 +157,7 @@ foreach ($artifacts as $c => $art) {
 		gettext('Filename'),
 		'text',
 		$art['filename'] ?? ''
-	))->setHelp($c === $last ? gettext('Remote filename for this artifact.') : '')->setWidth(3);
+	))->setHelp($c === $last ? gettext('Remote filename for this artifact.') : '')->setWidth(2);
 
 	$group->add(new Form_Input(
 		'artifact_owner' . $c,
@@ -185,7 +185,7 @@ foreach ($artifacts as $c => $art) {
 		gettext('Delete'),
 		null,
 		'fa-solid fa-trash-can'
-	))->addClass('btn-warning btn-sm');
+	))->addClass('btn-warning btn-sm')->setWidth(1);
 
 	$section->add($group);
 }
@@ -208,14 +208,14 @@ foreach ($destinations as $c => $dest) {
 		gettext('Directory'),
 		'text',
 		$dest['directory'] ?? ''
-	))->setHelp($c === $last ? gettext('Remote directory where files will be placed.') : '')->setWidth(4);
+	))->setHelp($c === $last ? gettext('Remote directory where files will be placed.') : '')->setWidth(3);
 
 	$group->add(new Form_Checkbox(
 		'destination_create_dir' . $c,
 		gettext('Create'),
 		gettext('Create if missing'),
 		($dest['create_dir'] ?? '') === 'on'
-	))->setWidth(2);
+	))->setWidth(1);
 
 	$group->add(new Form_Input(
 		'destination_dir_owner' . $c,
@@ -243,7 +243,7 @@ foreach ($destinations as $c => $dest) {
 		gettext('Delete'),
 		null,
 		'fa-solid fa-trash-can'
-	))->addClass('btn-warning btn-sm');
+	))->addClass('btn-warning btn-sm')->setWidth(1);
 
 	$section->add($group);
 }
@@ -339,19 +339,16 @@ $section->addInput(new Form_Input(
 
 $form->add($section);
 
+$form->addGlobal(new Form_Button(
+	'save',
+	gettext('Save'),
+	null,
+	'fa-solid fa-save'
+))->addClass('btn-primary btn-sm');
+
 print($form);
 
 ?>
-
-<nav class="action-buttons">
-	<button type="submit" name="act" value="save" class="btn btn-primary btn-sm">
-		<i class="fa-solid fa-save icon-embed-btn"></i>
-		<?=gettext('Save')?>
-	</button>
-	<a href="/certdeploy/certdeploy_deployments.php" class="btn btn-secondary btn-sm">
-		<?=gettext('Cancel')?>
-	</a>
-</nav>
 
 <script type="text/javascript">
 //<![CDATA[

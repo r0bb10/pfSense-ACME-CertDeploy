@@ -147,14 +147,13 @@ $section->addInput(new Form_StaticText(
 
 $form->add($section);
 
+$form->addGlobal(new Form_Button(
+	'save',
+	gettext('Save'),
+	null,
+	'fa-solid fa-save'
+))->addClass('btn-primary btn-sm');
+
 print($form);
 
-?>
-<nav class="action-buttons">
-	<button type="submit" class="btn btn-primary btn-sm" name="save" value="save">
-		<i class="fa-solid fa-save icon-embed-btn"></i>
-		<?=gettext('Save')?>
-	</button>
-</nav>
-
-<?php include('foot.inc'); ?>
+include('foot.inc');

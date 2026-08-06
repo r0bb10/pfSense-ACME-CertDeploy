@@ -20,17 +20,32 @@ if ($id !== '') {
 	}
 }
 
-if ($_POST && isset($_POST['act'])) {
-	if ($_POST['act'] === 'genkey') {
+if ($_POST) {
+	if (isset($_POST['act']) && $_POST['act'] === 'genkey') {
 		$type = $_POST['genkey_type'] ?? 'ed25519';
 		$name = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['genkey_name'] ?? 'new');
-		$result = certdeploy_identity_generate($name, $type);
+		$result = certdeploy_identity_generate($name, $type, certdeploy_uuid());
 		header('Content-Type: application/json');
 		echo json_encode($result);
 		exit;
 	}
 
-	if ($_POST['act'] === 'save') {
+	if (isset($_POST['act']) && $_POST['act'] === 'regenkey') {
+		$type = $_POST['key_type'] ?? 'ed25519';
+		$name = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['genkey_name'] ?? 'new');
+		$uuid = $_POST['identity_id'] ?? '';
+		if ($uuid === '') {
+			header('Content-Type: application/json');
+			echo json_encode(['error' => gettext('Identity ID missing.')]);
+			exit;
+		}
+		$result = certdeploy_identity_generate($name, $type, $uuid);
+		header('Content-Type: application/json');
+		echo json_encode($result);
+		exit;
+	}
+
+	if (isset($_POST['save'])) {
 		$name = trim($_POST['name'] ?? '');
 		if ($name === '') {
 			$input_errors[] = gettext('Name is required.');
@@ -47,14 +62,15 @@ if ($_POST && isset($_POST['act'])) {
 		}
 
 		if (empty($input_errors)) {
+			$ident_id = $is_new ? certdeploy_uuid() : $id;
 			if ($key_pem !== '') {
-				$private_key_path = certdeploy_identity_save_import($name, $key_pem);
+				$private_key_path = certdeploy_identity_save_import($name, $key_pem, $ident_id);
 			}
 			$public_key = certdeploy_identity_public_key($private_key_path);
 			$fingerprint = certdeploy_identity_fingerprint($private_key_path);
 
 			$ident = [
-				'id' => $is_new ? certdeploy_uuid() : $id,
+				'id' => $ident_id,
 				'name' => $name,
 				'enabled' => empty($_POST['enabled']) ? 'off' : 'on',
 				'description' => $_POST['description'] ?? '',
@@ -89,6 +105,13 @@ include('head.inc');
 if (!empty($input_errors)) {
 	print_input_errors($input_errors);
 }
+
+?>
+<div id="certdeploy_errors" class="alert alert-danger" style="display:none">
+	<p><?=gettext('The following input errors were detected:')?></p>
+	<ul></ul>
+</div>
+<?php
 
 $tab_array = [
 	[gettext('General'), false, '/certdeploy/certdeploy_general.php'],
@@ -148,7 +171,7 @@ $section->addInput(new Form_Input(
 	gettext('Public Key'),
 	'text',
 	$pconfig['public_key'] ?? ''
-))->setReadonly()->setHelp(gettext('Copy this public key to the remote host authorized_keys.'));
+))->setReadonly()->setHelp(gettext('Copy this public key to the remote host authorized_keys. (<a id="copypubkey" style="cursor: pointer;" data-success-text="' . gettext('Copied') . '" data-timeout="3000">' . gettext('Copy') . '</a>)'));
 
 $section->addInput(new Form_Input(
 	'fingerprint',
@@ -159,33 +182,53 @@ $section->addInput(new Form_Input(
 
 $form->add($section);
 
+if ($is_new || ($pconfig['private_key_path'] ?? '') === '') {
+	$form->addGlobal((new Form_Button(
+		'genkey',
+		gettext('Generate Key'),
+		null,
+		'fa-solid fa-key'
+	))->addClass('btn-info btn-sm')->setAttribute('type', 'button')->setAttribute('id', 'genkey'));
+}
+
+if (!$is_new) {
+	$form->addGlobal((new Form_Button(
+		'regenkey',
+		gettext('Regenerate Key'),
+		null,
+		'fa-solid fa-rotate'
+	))->addClass('btn-warning btn-sm')->setAttribute('type', 'button')->setAttribute('id', 'regenkey'));
+}
+
+$form->addGlobal(new Form_Button(
+	'save',
+	gettext('Save'),
+	null,
+	'fa-solid fa-save'
+))->addClass('btn-primary btn-sm');
+
 print($form);
 
 ?>
 
-<nav class="action-buttons">
-	<?php if ($is_new || ($pconfig['private_key_path'] ?? '') === ''): ?>
-	<button type="button" id="genkey" class="btn btn-info btn-sm">
-		<i class="fa-solid fa-key icon-embed-btn"></i>
-		<?=gettext('Generate Key')?>
-	</button>
-	<?php endif; ?>
-	<button type="submit" name="act" value="save" class="btn btn-primary btn-sm">
-		<i class="fa-solid fa-save icon-embed-btn"></i>
-		<?=gettext('Save')?>
-	</button>
-	<a href="/certdeploy/certdeploy_identities.php" class="btn btn-secondary btn-sm">
-		<?=gettext('Cancel')?>
-	</a>
-</nav>
-
 <script type="text/javascript">
 //<![CDATA[
+function certdeploy_show_error(message) {
+	var $box = $('#certdeploy_errors');
+	$box.find('ul').empty().append($('<li></li>').text(message));
+	$box.show();
+}
+
+function certdeploy_hide_error() {
+	$('#certdeploy_errors').hide().find('ul').empty();
+}
+
 events.push(function() {
 	$('#genkey').click(function() {
+		certdeploy_hide_error();
 		var name = $('#name').val();
 		if (name === '') {
-			alert('<?=gettext("Enter a name before generating a key.")?>');
+			certdeploy_show_error('<?=gettext("Enter a name before generating a key.")?>');
 			return;
 		}
 		$.ajax({
@@ -198,7 +241,7 @@ events.push(function() {
 			},
 			success: function(data) {
 				if (data.error) {
-					alert(data.error);
+					certdeploy_show_error(data.error);
 				} else {
 					$('#private_key_path').val(data.private_key_path);
 					$('#public_key').val(data.public_key);
@@ -206,7 +249,43 @@ events.push(function() {
 				}
 			},
 			error: function() {
-				alert('<?=gettext("Key generation failed.")?>');
+				certdeploy_show_error('<?=gettext("Key generation failed.")?>');
+			}
+		});
+	});
+
+	$('#copypubkey').click(function() {
+		var $this = $(this);
+		var originalText = $this.text();
+		navigator.clipboard.writeText($('#public_key').val());
+		$this.text($this.attr('data-success-text'));
+		setTimeout(function() {
+			$this.text(originalText);
+		}, $this.attr('data-timeout'));
+	});
+
+	$('#regenkey').click(function() {
+		certdeploy_hide_error();
+		$.ajax({
+			url: '/certdeploy/certdeploy_identity_edit.php',
+			type: 'POST',
+			data: {
+				act: 'regenkey',
+				identity_id: '<?=htmlspecialchars($id)?>',
+				genkey_name: $('#name').val(),
+				key_type: $('#key_type').val()
+			},
+			success: function(data) {
+				if (data.error) {
+					certdeploy_show_error(data.error);
+				} else {
+					$('#private_key_path').val(data.private_key_path);
+					$('#public_key').val(data.public_key);
+					$('#fingerprint').val(data.fingerprint);
+				}
+			},
+			error: function() {
+				certdeploy_show_error('<?=gettext("Key regeneration failed.")?>');
 			}
 		});
 	});

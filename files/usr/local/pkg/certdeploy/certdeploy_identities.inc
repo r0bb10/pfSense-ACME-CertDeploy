@@ -10,25 +10,31 @@ function certdeploy_identities() {
 
 function certdeploy_identity_options() {
 	$opts = [];
-	foreach (certdeploy_identities() as $idx => $ident) {
-		$label = $ident['name'] ?? ('identity-' . $idx);
+	foreach (certdeploy_identities() as $ident) {
+		$id = $ident['id'] ?? '';
+		if ($id === '') {
+			continue;
+		}
+		$label = $ident['name'] ?? $id;
 		if (!empty($ident['description'])) {
 			$label .= ' - ' . $ident['description'];
 		}
 		if (($ident['enabled'] ?? '') !== 'on') {
 			$label .= ' [disabled]';
 		}
-		$opts[$idx] = $label;
+		$opts[$id] = $label;
 	}
 	return $opts;
 }
 
-function certdeploy_identity_generate($name, $type = 'ed25519') {
+function certdeploy_identity_generate($name, $type = 'ed25519', $uuid = null) {
 	$key_dir = CERTDEPLOY_KEYS_DIR;
 	if (!is_dir($key_dir)) {
 		mkdir($key_dir, 0700, true);
 	}
-	$path = $key_dir . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '', $name);
+	$path = $key_dir . '/' . ($uuid ?: preg_replace('/[^a-zA-Z0-9_-]/', '', $name));
+	@unlink($path);
+	@unlink($path . '.pub');
 	if ($type === 'ed25519') {
 		exec('/usr/bin/ssh-keygen -t ed25519 -f ' . escapeshellarg($path) . ' -N "" -C ' . escapeshellarg($name) . ' 2>&1', $out, $rc);
 	} else {
@@ -84,12 +90,12 @@ function certdeploy_identity_fingerprint($private_key_path) {
 	return $m[0] ?? '';
 }
 
-function certdeploy_identity_save_import($name, $key_pem) {
+function certdeploy_identity_save_import($name, $key_pem, $uuid = null) {
 	$key_dir = CERTDEPLOY_KEYS_DIR;
 	if (!is_dir($key_dir)) {
 		mkdir($key_dir, 0700, true);
 	}
-	$path = $key_dir . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '', $name);
+	$path = $key_dir . '/' . ($uuid ?: preg_replace('/[^a-zA-Z0-9_-]/', '', $name));
 	$tmp = $path . '.tmp';
 	file_put_contents($tmp, $key_pem);
 	chmod($tmp, 0600);

@@ -69,21 +69,18 @@ if (count($identities) > 0):
 		$id = htmlspecialchars($ident['id'] ?? '');
 		$enabled = ($ident['enabled'] ?? '') === 'on';
 ?>
-				<tr>
+                <tr <?=$enabled ? '' : 'class="disabled"'?>>
 					<td>
-						<form method="post" style="display:inline">
-							<input type="hidden" name="id" value="<?=$id?>" />
-							<button type="submit" name="act" value="toggle" class="btn btn-xs <?= $enabled ? 'btn-success' : 'btn-default' ?>">
-								<i class="fa-solid <?= $enabled ? 'fa-check' : 'fa-ban' ?>"></i>
-							</button>
-						</form>
+						<a href="?act=toggle&amp;id=<?=$id?>" usepost>
+							<i class="fa-solid fa-check" title="<?=gettext('click to toggle enabled/disabled status')?>"></i>
+						</a>
 					</td>
 					<td><?=htmlspecialchars($ident['name'] ?? '')?></td>
 					<td><?=htmlspecialchars($ident['key_type'] ?? '')?></td>
 					<td><?=htmlspecialchars($ident['fingerprint'] ?? '')?></td>
 					<td>
 						<a class="fa-solid fa-pencil" title="<?=gettext('Edit')?>" href="/certdeploy/certdeploy_identity_edit.php?id=<?=$id?>"></a>
-						<form method="post" style="display:inline" onsubmit="return confirm('<?=gettext('Delete this identity?')?>')">
+						<form method="post" style="display:inline">
 							<input type="hidden" name="id" value="<?=$id?>" />
 							<button type="submit" name="act" value="delete" class="btn btn-xs btn-link">
 								<i class="fa-solid fa-trash-can text-danger"></i>
