@@ -37,8 +37,40 @@ function certdeploy_acme_certificates() {
 	return $certs;
 }
 
+function certdeploy_acme_certificate_files($name) {
+	$certs = certdeploy_acme_certificates();
+	if (!isset($certs[$name])) {
+		return [];
+	}
+	$cert = $certs[$name];
+	$files = [];
+	foreach (['crt' => 'Certificate', 'key' => 'Private Key', 'fullchain' => 'Full Chain'] as $type => $label) {
+		$path = $cert['paths'][$type] ?? '';
+		if ($path === '' || !is_readable($path)) {
+			continue;
+		}
+		$stat = stat($path);
+		$owner = '';
+		$group = '';
+		if ($stat !== false) {
+			$owner = function_exists('posix_getpwuid') ? (posix_getpwuid($stat['uid'])['name'] ?? '') : '';
+			$group = function_exists('posix_getgrgid') ? (posix_getgrgid($stat['gid'])['name'] ?? '') : '';
+		}
+		$basename = basename($path);
+		$files[$basename] = [
+			'type' => $type,
+			'path' => $path,
+			'label' => "{$basename} ({$label})",
+			'owner' => $owner,
+			'group' => $group,
+			'mode' => $stat !== false ? sprintf('%04o', $stat['mode'] & 07777) : '',
+		];
+	}
+	return $files;
+}
+
 function certdeploy_acme_certificate_options() {
-	$opts = [];
+	$opts = ['' => gettext('None')];
 	foreach (certdeploy_acme_certificates() as $name => $cert) {
 		$label = $name;
 		if ($cert['descr'] && $cert['descr'] !== $name) {

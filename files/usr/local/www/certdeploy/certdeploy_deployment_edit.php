@@ -20,29 +20,38 @@ if ($id !== '') {
 	}
 }
 
-if ($_POST && isset($_POST['save'])) {
-	$input_errors = [];
-	certdeploy_deployment_validate($_POST, $input_errors);
-	if (empty($input_errors)) {
-		$dep = certdeploy_deployment_build($_POST, $pconfig);
-		if ($is_new) {
-			$idx = certdeploy_array_next_index('installedpackages/certdeploy/deployments');
-		} else {
-			foreach (certdeploy_deployments() as $i => $existing) {
-				if (($existing['id'] ?? '') === $id) {
-					$idx = $i;
-					break;
-				}
-			}
-		}
-		config_set_path("installedpackages/certdeploy/deployments/item/{$idx}", $dep);
-		write_config('CertDeploy deployment saved');
-		certdeploy_sync();
-		header('Location: /certdeploy/certdeploy_deployments.php');
+if ($_POST) {
+	if (isset($_POST['act']) && $_POST['act'] === 'certfiles') {
+		$name = $_POST['certificate_name'] ?? '';
+		header('Content-Type: application/json');
+		echo json_encode(certdeploy_acme_certificate_files($name));
 		exit;
 	}
-	// On validation error, keep form values.
-	$pconfig = certdeploy_deployment_build($_POST, $pconfig);
+
+	if (isset($_POST['save'])) {
+		$input_errors = [];
+		certdeploy_deployment_validate($_POST, $input_errors);
+		if (empty($input_errors)) {
+			$dep = certdeploy_deployment_build($_POST, $pconfig);
+			if ($is_new) {
+				$idx = certdeploy_array_next_index('installedpackages/certdeploy/deployments');
+			} else {
+				foreach (certdeploy_deployments() as $i => $existing) {
+					if (($existing['id'] ?? '') === $id) {
+						$idx = $i;
+						break;
+					}
+				}
+			}
+			config_set_path("installedpackages/certdeploy/deployments/item/{$idx}", $dep);
+			write_config('CertDeploy deployment saved');
+			certdeploy_sync();
+			header('Location: /certdeploy/certdeploy_deployments.php');
+			exit;
+		}
+		// On validation error, keep form values.
+		$pconfig = certdeploy_deployment_build($_POST, $pconfig);
+	}
 }
 
 $pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Deployments'), $is_new ? gettext('Add') : gettext('Edit')];
@@ -116,22 +125,12 @@ $section->addInput(new Form_Select(
 	certdeploy_identity_options()
 ))->setHelp(gettext('SSH identity (key pair and login user) to use for authentication. The identity name is used as the SSH login user.'));
 
-$group = new Form_Group(gettext('Host Key Fingerprint'));
-$group->add(new Form_Input(
+$section->addInput(new Form_Input(
 	'host_key_fingerprint',
-	gettext('Fingerprint'),
+	gettext('Host Key Fingerprint'),
 	'text',
 	$pconfig['host_key_fingerprint'] ?? ''
-))->setReadonly()->setHelp(gettext('SHA256 fingerprint of the remote host key. Automatically imported on first connect.'))->setWidth(8);
-
-$group->add((new Form_Button(
-	'clear_host_key',
-	gettext('Clear'),
-	null,
-	'fa-solid fa-eraser'
-))->addClass('btn-secondary btn-sm')->setAttribute('type', 'button')->setAttribute('id', 'clear_host_key')->setWidth(2));
-
-$section->add($group);
+))->setReadonly()->setHelp(gettext('SHA256 fingerprint of the remote host key. Automatically imported on first connect.'));
 
 $section->addInput(new Form_Checkbox(
 	'host_key_ignore_changes',
@@ -150,123 +149,130 @@ $section->addInput(new Form_Select(
 	gettext('ACME Certificate'),
 	$pconfig['certificate_name'] ?? '',
 	certdeploy_acme_certificate_options()
-))->setHelp(gettext('ACME certificate to deploy to the remote host.'));
+))->setHelp(gettext('ACME certificate to deploy. Leave empty for a connection-only deployment.'));
 
-$artifacts = $pconfig['artifacts']['row'] ?? [[]];
-$last = count($artifacts) - 1;
+$cert_files = ($pconfig['certificate_name'] ?? '') !== '' ? certdeploy_acme_certificate_files($pconfig['certificate_name']) : [];
+
+// Hidden template for new artifact rows.
+?>
+<div id="artifact_template" class="form-group artifact-row" style="display:none">
+	<label class="col-sm-2 control-label"></label>
+	<div class="col-sm-2">
+		<select class="form-control artifact-source" name="artifact_source[]">
+			<option value=""><?=gettext('Select source')?></option>
+		</select>
+	</div>
+	<div class="col-sm-2">
+		<input type="text" class="form-control artifact-filename" name="artifact_filename[]" placeholder="<?=gettext('Remote filename')?>" />
+	</div>
+	<div class="col-sm-2">
+		<input type="text" class="form-control artifact-owner" name="artifact_owner[]" placeholder="<?=gettext('Owner')?>" />
+	</div>
+	<div class="col-sm-2">
+		<input type="text" class="form-control artifact-group" name="artifact_file_group[]" placeholder="<?=gettext('Group')?>" />
+	</div>
+	<div class="col-sm-1">
+		<input type="text" class="form-control artifact-mode" name="artifact_mode[]" placeholder="<?=gettext('Mode')?>" />
+	</div>
+	<div class="col-sm-1">
+		<button type="button" class="btn btn-warning btn-sm delete-artifact"><i class="fa-solid fa-trash-can"></i></button>
+	</div>
+</div>
+<?php
+
+// Existing artifact rows.
+$artifacts = $pconfig['artifacts']['row'] ?? [];
 foreach ($artifacts as $c => $art) {
 	$group = new Form_Group($c === 0 ? gettext('Artifacts') : '');
-	$group->addClass('repeatable');
+	$group->addClass('artifact-row');
 
-	$group->add(new Form_Select(
-		'artifact_type' . $c,
-		gettext('Type'),
-		$art['type'] ?? '',
-		certdeploy_deployment_artifact_types()
-	))->setWidth(2);
+	$source_select = new Form_Select(
+		'artifact_source' . $c,
+		gettext('Source'),
+		$art['source'] ?? '',
+		certdeploy_deployment_artifact_sources($pconfig['certificate_name'] ?? '')
+	);
+	$source_select->setAttribute('class', 'form-control artifact-source');
+	$group->add($source_select)->setWidth(2);
 
 	$group->add(new Form_Input(
 		'artifact_filename' . $c,
 		gettext('Filename'),
 		'text',
 		$art['filename'] ?? ''
-	))->setHelp($c === $last ? gettext('Remote filename for this artifact.') : '')->setWidth(2);
+	))->setAttribute('class', 'form-control artifact-filename')->setWidth(2);
 
 	$group->add(new Form_Input(
 		'artifact_owner' . $c,
 		gettext('Owner'),
 		'text',
 		$art['owner'] ?? ''
-	))->setWidth(2);
+	))->setAttribute('class', 'form-control artifact-owner')->setWidth(2);
 
 	$group->add(new Form_Input(
 		'artifact_file_group' . $c,
 		gettext('Group'),
 		'text',
 		$art['file_group'] ?? ''
-	))->setWidth(2);
+	))->setAttribute('class', 'form-control artifact-group')->setWidth(2);
 
 	$group->add(new Form_Input(
 		'artifact_mode' . $c,
 		gettext('Mode'),
 		'text',
 		$art['mode'] ?? ''
-	))->setWidth(1);
+	))->setAttribute('class', 'form-control artifact-mode')->setWidth(1);
 
-	$group->add(new Form_Button(
-		'delete_row' . $c,
+	$group->add((new Form_Button(
+		'delete_artifact' . $c,
 		gettext('Delete'),
 		null,
 		'fa-solid fa-trash-can'
-	))->addClass('btn-warning btn-sm')->setWidth(1);
+	))->addClass('btn-warning btn-sm delete-artifact')->setAttribute('type', 'button')->setWidth(1));
 
 	$section->add($group);
 }
 
-$section->addInput(new Form_Button(
-	'add_row',
+// Add Artifact button.
+$section->addInput((new Form_Button(
+	'add_artifact',
 	gettext('Add Artifact'),
 	null,
 	'fa-solid fa-plus'
-))->addClass('btn-success btn-sm addbtn');
+))->addClass('btn-success btn-sm')->setAttribute('type', 'button')->setAttribute('id', 'add_artifact'));
 
-$destinations = $pconfig['destinations']['row'] ?? [[]];
-$last = count($destinations) - 1;
-foreach ($destinations as $c => $dest) {
-	$group = new Form_Group($c === 0 ? gettext('Destinations') : '');
-	$group->addClass('repeatable');
+// Destination (single, required).
+$dest = $pconfig['destination'] ?? [];
+$group = new Form_Group(gettext('Destination'));
+$group->add(new Form_Input(
+	'destination_directory',
+	gettext('Directory'),
+	'text',
+	$dest['directory'] ?? ''
+))->setHelp(gettext('Remote directory where files will be placed. Created if missing.'))->setWidth(3);
 
-	$group->add(new Form_Input(
-		'destination_directory' . $c,
-		gettext('Directory'),
-		'text',
-		$dest['directory'] ?? ''
-	))->setHelp($c === $last ? gettext('Remote directory where files will be placed.') : '')->setWidth(3);
+$group->add(new Form_Input(
+	'destination_dir_owner',
+	gettext('Owner'),
+	'text',
+	$dest['dir_owner'] ?? ''
+))->setWidth(2);
 
-	$group->add(new Form_Checkbox(
-		'destination_create_dir' . $c,
-		gettext('Create'),
-		gettext('Create if missing'),
-		($dest['create_dir'] ?? '') === 'on'
-	))->setWidth(1);
+$group->add(new Form_Input(
+	'destination_dir_group',
+	gettext('Group'),
+	'text',
+	$dest['dir_group'] ?? ''
+))->setWidth(2);
 
-	$group->add(new Form_Input(
-		'destination_dir_owner' . $c,
-		gettext('Owner'),
-		'text',
-		$dest['dir_owner'] ?? ''
-	))->setWidth(2);
+$group->add(new Form_Input(
+	'destination_dir_mode',
+	gettext('Mode'),
+	'text',
+	$dest['dir_mode'] ?? ''
+))->setWidth(1);
 
-	$group->add(new Form_Input(
-		'destination_dir_group' . $c,
-		gettext('Group'),
-		'text',
-		$dest['dir_group'] ?? ''
-	))->setWidth(2);
-
-	$group->add(new Form_Input(
-		'destination_dir_mode' . $c,
-		gettext('Mode'),
-		'text',
-		$dest['dir_mode'] ?? ''
-	))->setWidth(1);
-
-	$group->add(new Form_Button(
-		'delete_row' . $c,
-		gettext('Delete'),
-		null,
-		'fa-solid fa-trash-can'
-	))->addClass('btn-warning btn-sm')->setWidth(1);
-
-	$section->add($group);
-}
-
-$section->addInput(new Form_Button(
-	'add_row',
-	gettext('Add Destination'),
-	null,
-	'fa-solid fa-plus'
-))->addClass('btn-success btn-sm addbtn');
+$section->add($group);
 
 $form->add($section);
 
@@ -365,12 +371,117 @@ print($form);
 
 <script type="text/javascript">
 //<![CDATA[
-events.push(function() {
-	// Standard pfSense repeatable row handling.
-	checkLastRow();
+var certdeployCertFiles = <?=json_encode($cert_files)?>;
 
-	$('#clear_host_key').click(function() {
-		$('#host_key_fingerprint').val('');
+function certdeploy_populate_sources($select, selected) {
+	$select.empty();
+	$select.append($('<option value=""></option>').text('<?=gettext("Select source")?>'));
+	$.each(certdeployCertFiles, function(basename, info) {
+		var $opt = $('<option></option>')
+			.attr('value', basename)
+			.text(info.label)
+			.data('filename', basename)
+			.data('owner', info.owner)
+			.data('group', info.group)
+			.data('mode', info.mode);
+		if (basename === selected) {
+			$opt.prop('selected', true);
+		}
+		$select.append($opt);
+	});
+}
+
+function certdeploy_autofill_row($row) {
+	var $opt = $row.find('.artifact-source option:selected');
+	if (!$opt.val()) {
+		return;
+	}
+	var $filename = $row.find('.artifact-filename');
+	if ($filename.val() === '') {
+		$filename.val($opt.data('filename'));
+	}
+	var $owner = $row.find('.artifact-owner');
+	if ($owner.val() === '') {
+		$owner.val($opt.data('owner'));
+	}
+	var $group = $row.find('.artifact-group');
+	if ($group.val() === '') {
+		$group.val($opt.data('group'));
+	}
+	var $mode = $row.find('.artifact-mode');
+	if ($mode.val() === '') {
+		$mode.val($opt.data('mode'));
+	}
+}
+
+function certdeploy_next_artifact_index() {
+	var max = -1;
+	$('.artifact-source').each(function() {
+		var name = $(this).attr('name');
+		var m = name.match(/artifact_source(\d+)$/);
+		if (m) {
+			var idx = parseInt(m[1], 10);
+			if (idx > max) {
+				max = idx;
+			}
+		}
+	});
+	return max + 1;
+}
+
+function certdeploy_add_artifact_row() {
+	var $template = $('#artifact_template').clone();
+	$template.removeAttr('id').show();
+	var idx = certdeploy_next_artifact_index();
+	$template.find('.artifact-source').attr('name', 'artifact_source' + idx);
+	$template.find('.artifact-filename').attr('name', 'artifact_filename' + idx);
+	$template.find('.artifact-owner').attr('name', 'artifact_owner' + idx);
+	$template.find('.artifact-group').attr('name', 'artifact_file_group' + idx);
+	$template.find('.artifact-mode').attr('name', 'artifact_mode' + idx);
+	certdeploy_populate_sources($template.find('.artifact-source'), '');
+	$('#add_artifact').closest('.form-group').before($template);
+}
+
+events.push(function() {
+	// Ensure existing artifact source dropdowns have data attributes for autofill.
+	$('.artifact-source').each(function() {
+		certdeploy_populate_sources($(this), $(this).val());
+	});
+
+	$('#certificate_name').change(function() {
+		var cert = $(this).val();
+		if (cert === '') {
+			certdeployCertFiles = {};
+			$('.artifact-source').empty().append($('<option value=""></option>').text('<?=gettext("Select certificate first")?>'));
+			return;
+		}
+		$.ajax({
+			url: '/certdeploy/certdeploy_deployment_edit.php',
+			type: 'POST',
+			data: {
+				act: 'certfiles',
+				certificate_name: cert
+			},
+			success: function(data) {
+				certdeployCertFiles = data;
+				$('.artifact-source').each(function() {
+					var selected = $(this).val();
+					certdeploy_populate_sources($(this), selected);
+				});
+			}
+		});
+	});
+
+	$(document).on('change', '.artifact-source', function() {
+		certdeploy_autofill_row($(this).closest('.artifact-row'));
+	});
+
+	$('#add_artifact').click(function() {
+		certdeploy_add_artifact_row();
+	});
+
+	$(document).on('click', '.delete-artifact', function() {
+		$(this).closest('.artifact-row').remove();
 	});
 });
 //]]>

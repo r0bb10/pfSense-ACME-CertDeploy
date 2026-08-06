@@ -26,13 +26,15 @@ function certdeploy_deployment_state($dep) {
 	return $dep['last_run_status'];
 }
 
-function certdeploy_deployment_artifact_types() {
-	return ['crt' => 'Certificate', 'key' => 'Private Key', 'fullchain' => 'Full Chain'];
-}
-
-function certdeploy_deployment_default_filename($type) {
-	$map = ['crt' => 'cert.crt', 'key' => 'cert.key', 'fullchain' => 'fullchain.crt'];
-	return $map[$type] ?? '';
+function certdeploy_deployment_artifact_sources($certificate_name) {
+	if ($certificate_name === '') {
+		return [];
+	}
+	$files = [];
+	foreach (certdeploy_acme_certificate_files($certificate_name) as $basename => $info) {
+		$files[$basename] = $info['label'];
+	}
+	return $files;
 }
 
 function certdeploy_deployment_host_key_policies() {
@@ -48,9 +50,11 @@ function certdeploy_deployment_validate(&$post, &$input_errors) {
 	}
 
 	$cert = $post['certificate_name'] ?? '';
-	$certs = certdeploy_acme_certificate_options();
-	if ($cert === '' || !isset($certs[$cert])) {
-		$input_errors[] = gettext('A valid ACME certificate must be selected.');
+	if ($cert !== '') {
+		$certs = certdeploy_acme_certificate_options();
+		if (!isset($certs[$cert])) {
+			$input_errors[] = gettext('A valid ACME certificate must be selected.');
+		}
 	}
 
 	if (($post['host'] ?? '') === '') {
@@ -65,28 +69,19 @@ function certdeploy_deployment_validate(&$post, &$input_errors) {
 		$input_errors[] = gettext('A valid SSH identity must be selected.');
 	}
 
-	$artifacts = certdeploy_parse_repeatables($post, ['artifact_type', 'artifact_filename', 'artifact_owner', 'artifact_file_group', 'artifact_mode']);
-	if (empty($artifacts)) {
-		$input_errors[] = gettext('At least one artifact must be configured.');
-	}
+	$artifacts = certdeploy_parse_repeatables($post, ['artifact_source', 'artifact_filename', 'artifact_owner', 'artifact_file_group', 'artifact_mode']);
 	foreach ($artifacts as $a) {
-		if (($a['artifact_type'] ?? '') === '') {
-			$input_errors[] = gettext('Artifact type is required.');
+		if (($a['artifact_source'] ?? '') === '' && ($a['artifact_filename'] ?? '') === '') {
+			continue;
+		}
+		if (($a['artifact_source'] ?? '') === '') {
+			$input_errors[] = gettext('Artifact source is required.');
 		}
 		if (($a['artifact_filename'] ?? '') === '') {
 			$input_errors[] = gettext('Artifact filename is required.');
 		}
 	}
 
-	$destinations = certdeploy_parse_repeatables($post, ['destination_directory', 'destination_create_dir', 'destination_dir_owner', 'destination_dir_group', 'destination_dir_mode']);
-	if (empty($destinations)) {
-		$input_errors[] = gettext('At least one destination directory is required.');
-	}
-	foreach ($destinations as $d) {
-		if (($d['destination_directory'] ?? '') === '') {
-			$input_errors[] = gettext('Destination directory is required.');
-		}
-	}
 }
 
 function certdeploy_parse_repeatables($post, $fields) {
@@ -125,10 +120,13 @@ function certdeploy_deployment_build($post, $old = []) {
 	$dep['readiness_check'] = empty($post['readiness_check']) ? 'off' : 'on';
 
 	$dep['artifacts'] = ['row' => []];
-	$artifacts = certdeploy_parse_repeatables($post, ['artifact_type', 'artifact_filename', 'artifact_owner', 'artifact_file_group', 'artifact_mode']);
+	$artifacts = certdeploy_parse_repeatables($post, ['artifact_source', 'artifact_filename', 'artifact_owner', 'artifact_file_group', 'artifact_mode']);
 	foreach ($artifacts as $a) {
+		if (($a['artifact_source'] ?? '') === '' && ($a['artifact_filename'] ?? '') === '') {
+			continue;
+		}
 		$dep['artifacts']['row'][] = [
-			'type' => $a['artifact_type'],
+			'source' => $a['artifact_source'],
 			'filename' => $a['artifact_filename'],
 			'owner' => $a['artifact_owner'] ?? '',
 			'file_group' => $a['artifact_file_group'] ?? '',
@@ -136,17 +134,12 @@ function certdeploy_deployment_build($post, $old = []) {
 		];
 	}
 
-	$dep['destinations'] = ['row' => []];
-	$destinations = certdeploy_parse_repeatables($post, ['destination_directory', 'destination_create_dir', 'destination_dir_owner', 'destination_dir_group', 'destination_dir_mode']);
-	foreach ($destinations as $d) {
-		$dep['destinations']['row'][] = [
-			'directory' => $d['destination_directory'],
-			'create_dir' => empty($d['destination_create_dir']) ? 'off' : 'on',
-			'dir_owner' => $d['destination_dir_owner'] ?? '',
-			'dir_group' => $d['destination_dir_group'] ?? '',
-			'dir_mode' => $d['destination_dir_mode'] ?? '',
-		];
-	}
+	$dep['destination'] = [
+		'directory' => $post['destination_directory'] ?? '',
+		'dir_owner' => $post['destination_dir_owner'] ?? '',
+		'dir_group' => $post['destination_dir_group'] ?? '',
+		'dir_mode' => $post['destination_dir_mode'] ?? '',
+	];
 
 	$dep['post_upload_cmd'] = $post['post_upload_cmd'] ?? '';
 	$dep['validation_cmd'] = $post['validation_cmd'] ?? '';

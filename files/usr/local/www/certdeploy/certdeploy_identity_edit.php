@@ -56,18 +56,30 @@ if ($_POST) {
 		$key_type = $_POST['key_type'] ?? 'ed25519';
 		$private_key_path = $_POST['private_key_path'] ?? '';
 		$key_pem = $_POST['key_pem'] ?? '';
+		$new_key_pem = $_POST['new_key_pem'] ?? '';
+		$identity_id = $_POST['identity_id'] ?? '';
 
-		if ($private_key_path === '' && $key_pem === '') {
+		if ($private_key_path === '' && $key_pem === '' && $new_key_pem === '') {
 			$input_errors[] = gettext('Either generate or import a private key.');
 		}
 
 		if (empty($input_errors)) {
-			$ident_id = $is_new ? certdeploy_uuid() : $id;
-			if ($key_pem !== '') {
+			$ident_id = $is_new ? ($identity_id !== '' ? $identity_id : certdeploy_uuid()) : $id;
+			$public_key = $_POST['public_key'] ?? '';
+			$fingerprint = $_POST['fingerprint'] ?? '';
+			if ($new_key_pem !== '') {
+				$private_key_path = certdeploy_identity_save_import($name, $new_key_pem, $ident_id);
+				@unlink($private_key_path . '.pub');
+				if ($public_key !== '') {
+					file_put_contents($private_key_path . '.pub', $public_key . "\n");
+					chmod($private_key_path . '.pub', 0644);
+				}
+			} elseif ($key_pem !== '') {
 				$private_key_path = certdeploy_identity_save_import($name, $key_pem, $ident_id);
+				@unlink($private_key_path . '.pub');
+				$public_key = certdeploy_identity_public_key($private_key_path);
+				$fingerprint = certdeploy_identity_fingerprint($private_key_path);
 			}
-			$public_key = certdeploy_identity_public_key($private_key_path);
-			$fingerprint = certdeploy_identity_fingerprint($private_key_path);
 
 			$ident = [
 				'id' => $ident_id,
@@ -182,6 +194,9 @@ $section->addInput(new Form_Input(
 
 $form->add($section);
 
+$form->addGlobal(new Form_Input('identity_id', '', 'hidden', $id));
+$form->addGlobal(new Form_Input('new_key_pem', '', 'hidden', ''));
+
 if ($is_new || ($pconfig['private_key_path'] ?? '') === '') {
 	$form->addGlobal((new Form_Button(
 		'genkey',
@@ -224,6 +239,12 @@ function certdeploy_hide_error() {
 }
 
 events.push(function() {
+	$('#key_pem').on('input', function() {
+		if ($(this).val() !== '') {
+			$('#new_key_pem').val('');
+		}
+	});
+
 	$('#genkey').click(function() {
 		certdeploy_hide_error();
 		var name = $('#name').val();
@@ -243,9 +264,12 @@ events.push(function() {
 				if (data.error) {
 					certdeploy_show_error(data.error);
 				} else {
+					$('#identity_id').val(data.identity_id);
 					$('#private_key_path').val(data.private_key_path);
 					$('#public_key').val(data.public_key);
 					$('#fingerprint').val(data.fingerprint);
+					$('#new_key_pem').val(data.private_key_pem);
+					$('#key_pem').val('');
 				}
 			},
 			error: function() {
@@ -257,11 +281,39 @@ events.push(function() {
 	$('#copypubkey').click(function() {
 		var $this = $(this);
 		var originalText = $this.text();
-		navigator.clipboard.writeText($('#public_key').val());
-		$this.text($this.attr('data-success-text'));
-		setTimeout(function() {
-			$this.text(originalText);
-		}, $this.attr('data-timeout'));
+		var key = $('#public_key').val();
+		if (key === '') {
+			certdeploy_show_error('<?=gettext("No public key to copy. Generate or import a key first.")?>');
+			return;
+		}
+		var copied = false;
+		var $tmp = $('<textarea></textarea>').css({position: 'fixed', left: '-9999px'}).val(key).appendTo('body');
+		$tmp.select();
+		try {
+			copied = document.execCommand('copy');
+		} catch (e) {
+			copied = false;
+		}
+		$tmp.remove();
+		if (!copied && navigator.clipboard) {
+			navigator.clipboard.writeText(key).then(function() {
+				$this.text($this.attr('data-success-text'));
+				setTimeout(function() {
+					$this.text(originalText);
+				}, $this.attr('data-timeout'));
+			}).catch(function() {
+				certdeploy_show_error('<?=gettext("Copy failed.")?>');
+			});
+			return;
+		}
+		if (copied) {
+			$this.text($this.attr('data-success-text'));
+			setTimeout(function() {
+				$this.text(originalText);
+			}, $this.attr('data-timeout'));
+		} else {
+			certdeploy_show_error('<?=gettext("Copy failed.")?>');
+		}
 	});
 
 	$('#regenkey').click(function() {
@@ -282,6 +334,8 @@ events.push(function() {
 					$('#private_key_path').val(data.private_key_path);
 					$('#public_key').val(data.public_key);
 					$('#fingerprint').val(data.fingerprint);
+					$('#new_key_pem').val(data.private_key_pem);
+					$('#key_pem').val('');
 				}
 			},
 			error: function() {

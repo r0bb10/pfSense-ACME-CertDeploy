@@ -27,32 +27,47 @@ function certdeploy_identity_options() {
 	return $opts;
 }
 
+function certdeploy_identity_fingerprint_from_public_key($public_key) {
+	$public_key = trim($public_key);
+	if ($public_key === '') {
+		return '';
+	}
+	$parts = explode(' ', $public_key);
+	if (count($parts) < 2) {
+		return '';
+	}
+	$blob = base64_decode($parts[1]);
+	if ($blob === false) {
+		return '';
+	}
+	return 'SHA256:' . rtrim(base64_encode(hash('sha256', $blob, true)), '=');
+}
+
 function certdeploy_identity_generate($name, $type = 'ed25519', $uuid = null) {
 	$key_dir = CERTDEPLOY_KEYS_DIR;
-	if (!is_dir($key_dir)) {
-		mkdir($key_dir, 0700, true);
-	}
-	$path = $key_dir . '/' . ($uuid ?: preg_replace('/[^a-zA-Z0-9_-]/', '', $name));
-	@unlink($path);
-	@unlink($path . '.pub');
+	$real_path = $key_dir . '/' . ($uuid ?: preg_replace('/[^a-zA-Z0-9_-]/', '', $name));
+	$tmp_path = tempnam('/tmp', 'cdkey');
+	@unlink($tmp_path);
 	if ($type === 'ed25519') {
-		exec('/usr/bin/ssh-keygen -t ed25519 -f ' . escapeshellarg($path) . ' -N "" -C ' . escapeshellarg($name) . ' 2>&1', $out, $rc);
+		exec('/usr/bin/ssh-keygen -q -t ed25519 -f ' . escapeshellarg($tmp_path) . ' -N "" -C ' . escapeshellarg($name) . ' 2>&1', $out, $rc);
 	} else {
 		$bits = ($type === 'rsa4096') ? 4096 : (($type === 'rsa3072') ? 3072 : 2048);
-		exec('/usr/bin/ssh-keygen -t rsa -b ' . escapeshellarg($bits) . ' -f ' . escapeshellarg($path) . ' -N "" -C ' . escapeshellarg($name) . ' 2>&1', $out, $rc);
+		exec('/usr/bin/ssh-keygen -q -t rsa -b ' . escapeshellarg($bits) . ' -f ' . escapeshellarg($tmp_path) . ' -N "" -C ' . escapeshellarg($name) . ' 2>&1', $out, $rc);
 	}
-	if ($rc !== 0) {
+	if ($rc !== 0 || !is_readable($tmp_path) || !is_readable($tmp_path . '.pub')) {
+		@unlink($tmp_path);
+		@unlink($tmp_path . '.pub');
 		return ['error' => implode("\n", $out)];
 	}
-	chmod($path, 0600);
-	chmod($path . '.pub', 0644);
-	$public = file_get_contents($path . '.pub');
-	$public = trim($public);
-	$fingerprint = exec('/usr/bin/ssh-keygen -lf ' . escapeshellarg($path . '.pub') . ' -E sha256');
-	preg_match('/SHA256:[A-Za-z0-9+\/]+/', $fingerprint, $m);
-	$fingerprint = $m[0] ?? '';
+	$private_pem = file_get_contents($tmp_path);
+	$public = trim(file_get_contents($tmp_path . '.pub'));
+	$fingerprint = certdeploy_identity_fingerprint_from_public_key($public);
+	@unlink($tmp_path);
+	@unlink($tmp_path . '.pub');
 	return [
-		'private_key_path' => $path,
+		'identity_id' => $uuid,
+		'private_key_pem' => $private_pem,
+		'private_key_path' => $real_path,
 		'public_key' => $public,
 		'fingerprint' => $fingerprint,
 	];
@@ -79,15 +94,7 @@ function certdeploy_identity_public_key($private_key_path) {
 
 function certdeploy_identity_fingerprint($private_key_path) {
 	$pub = certdeploy_identity_public_key($private_key_path);
-	if ($pub === '') {
-		return '';
-	}
-	$tmp = tempnam('/tmp', 'cdfp');
-	file_put_contents($tmp, $pub . "\n");
-	$fp = exec('/usr/bin/ssh-keygen -lf ' . escapeshellarg($tmp) . ' -E sha256');
-	unlink($tmp);
-	preg_match('/SHA256:[A-Za-z0-9+\/]+/', $fp, $m);
-	return $m[0] ?? '';
+	return certdeploy_identity_fingerprint_from_public_key($pub);
 }
 
 function certdeploy_identity_save_import($name, $key_pem, $uuid = null) {
