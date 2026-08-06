@@ -18,8 +18,9 @@ if ($_POST && isset($_POST['act'], $_POST['id'])) {
 				config_set_path("installedpackages/certdeploy/deployments/item/{$idx}", $dep);
 				write_config('CertDeploy deployment toggled');
 			} elseif ($_POST['act'] === 'deploy') {
-				// Trigger deployment via daemon control.
+				// Trigger deployment via daemon control. Do not sync/restart the daemon.
 				mwexec('/usr/local/sbin/certdeployctl deploy ' . escapeshellarg($id) . ' >/dev/null 2>&1 &');
+				break;
 			}
 			certdeploy_sync();
 			break;

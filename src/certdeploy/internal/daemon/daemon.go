@@ -15,6 +15,7 @@ import (
 
 	"certdeploy/internal/config"
 	"certdeploy/internal/deploy"
+	"certdeploy/internal/pfsense"
 	"certdeploy/internal/ssh"
 	"certdeploy/internal/state"
 )
@@ -128,6 +129,24 @@ func (d *Daemon) Run() error {
 	return d.logFile.Close()
 }
 
+func (d *Daemon) runDeployment(id string) {
+	dep, err := pfsense.LoadDeployment(d.cfg.ConfigPath, id)
+	if err != nil {
+		d.logger.Error("failed to load deployment", slog.String("component", "daemon"), slog.String("deployment", id), slog.Any("error", err))
+		return
+	}
+
+	result := d.engine.Run(context.Background(), dep)
+	if result.Error != nil {
+		d.logger.Error("deployment failed", slog.String("component", "daemon"), slog.String("deployment", id), slog.Any("error", result.Error))
+		return
+	}
+
+	if result.HostKeyFingerprint != "" && result.HostKeyFingerprint != dep.HostKeyFingerprint {
+		d.logger.Info("recorded host key fingerprint", slog.String("component", "daemon"), slog.String("deployment", id), slog.String("fingerprint", result.HostKeyFingerprint))
+	}
+}
+
 func (d *Daemon) acceptLoop(ctx context.Context, ln net.Listener) {
 	for {
 		conn, err := ln.Accept()
@@ -170,6 +189,13 @@ func (d *Daemon) handleConn(ctx context.Context, conn net.Conn) {
 	case "deploy-outdated":
 		_, _ = fmt.Fprintln(conn, "deploy outdated scheduled")
 		// TODO: trigger outdated deployment.
+	case "deploy":
+		if len(req.Args) < 2 {
+			_, _ = fmt.Fprintln(conn, "error: deploy requires a deployment id")
+			return
+		}
+		go d.runDeployment(req.Args[1])
+		_, _ = fmt.Fprintln(conn, "deploy scheduled")
 	default:
 		_, _ = fmt.Fprintf(conn, "unknown command: %s\n", req.Args[0])
 	}

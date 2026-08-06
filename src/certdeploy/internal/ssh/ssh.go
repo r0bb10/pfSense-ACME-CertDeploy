@@ -2,10 +2,14 @@ package ssh
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -24,16 +28,26 @@ func NewRunner(cfg *config.Config, logger *slog.Logger) *Runner {
 
 // Options configures a single target connection.
 type Options struct {
-	Host               string
-	Port               int
-	User               string
-	IdentityPath       string
-	HostKeyFingerprint string
-	Timeout            int
-	CMDTimeout         int
-	ExtraSSHOpts       string
-	UseSFTP            bool
-	LegacySCPFallback  bool
+	Host                 string
+	Port                 int
+	User                 string
+	IdentityPath         string
+	HostKeyFingerprint   string
+	HostKeyIgnoreChanges bool
+	KnownHostsFile       string
+	HostKeyAlgorithm     string
+	Timeout              int
+	CMDTimeout           int
+	ExtraSSHOpts         string
+	UseSFTP              bool
+	LegacySCPFallback    bool
+}
+
+// HostKeyResult holds a scanned host key and its SHA256 fingerprint.
+type HostKeyResult struct {
+	Line        string
+	Fingerprint string
+	Algorithm   string
 }
 
 func (r *Runner) execSSH(ctx context.Context, opts Options, remoteCmd string) ([]byte, error) {
@@ -72,11 +86,16 @@ func (r *Runner) execSCP(ctx context.Context, opts Options, src, dst string) err
 	return nil
 }
 
+// baseArgs returns ssh/scp common arguments. When HostKeyFingerprint is set or
+// a known hosts file has been prepared, it points OpenSSH at that file.
 func (r *Runner) baseArgs(opts Options) []string {
+	timeout := opts.Timeout
+	if timeout == 0 {
+		timeout = r.cfg.DefaultSSHTimeout
+	}
 	args := []string{
-		"-o", "StrictHostKeyChecking=yes",
 		"-o", "BatchMode=yes",
-		"-o", "ConnectTimeout=" + fmt.Sprintf("%d", opts.Timeout),
+		"-o", "ConnectTimeout=" + fmt.Sprintf("%d", timeout),
 	}
 	if opts.Port != 0 && opts.Port != 22 {
 		args = append(args, "-p", fmt.Sprintf("%d", opts.Port))
@@ -84,12 +103,34 @@ func (r *Runner) baseArgs(opts Options) []string {
 	if opts.IdentityPath != "" {
 		args = append(args, "-i", opts.IdentityPath)
 	}
-	if opts.HostKeyFingerprint != "" {
-		args = append(args, "-o", "HostKeyAlias="+opts.Host)
-		// TODO: enforce specific host key fingerprint via known_hosts or ssh-keyscan compare.
+	if opts.KnownHostsFile != "" {
+		args = append(args,
+			"-o", "StrictHostKeyChecking=yes",
+			"-o", "UserKnownHostsFile="+opts.KnownHostsFile,
+		)
+		if opts.HostKeyAlgorithm != "" {
+			args = append(args, "-o", "HostKeyAlgorithms="+allowedAlgorithms(opts.HostKeyAlgorithm))
+		}
 	}
 	args = append(args, strings.Fields(opts.ExtraSSHOpts)...)
 	return args
+}
+
+func allowedAlgorithms(algorithm string) string {
+	switch algorithm {
+	case "ssh-ed25519":
+		return "ssh-ed25519"
+	case "ecdsa-sha2-nistp256":
+		return "ecdsa-sha2-nistp256"
+	case "ecdsa-sha2-nistp384":
+		return "ecdsa-sha2-nistp384"
+	case "ecdsa-sha2-nistp521":
+		return "ecdsa-sha2-nistp521"
+	case "ssh-rsa":
+		return "ssh-rsa,rsa-sha2-256,rsa-sha2-512"
+	default:
+		return hostKeyAlgorithms()
+	}
 }
 
 // RunCommand executes a remote command and returns its output.
@@ -106,15 +147,192 @@ func (r *Runner) CopyFile(ctx context.Context, opts Options, src, dst string) er
 	return r.execSCP(ctx, opts, src, dst)
 }
 
-// ScanHostKey returns the SHA256 host key fingerprint for the target.
-func (r *Runner) ScanHostKey(ctx context.Context, host string, port int) (string, error) {
-	args := []string{"-H", "-p", fmt.Sprintf("%d", port), host}
+// ScanAndVerifyHostKey scans the target host key, verifies it against the
+// configured fingerprint unless ignore-changes is enabled, and returns a
+// HostKeyResult with the accepted key line and fingerprint.
+func (r *Runner) ScanAndVerifyHostKey(ctx context.Context, opts Options) (HostKeyResult, error) {
+	result := HostKeyResult{}
+	keys, err := r.scanHostKeys(ctx, opts.Host, opts.Port)
+	if err != nil {
+		return result, err
+	}
+	if len(keys) == 0 {
+		return result, fmt.Errorf("no host keys returned by ssh-keyscan")
+	}
+
+	if opts.HostKeyFingerprint != "" && !opts.HostKeyIgnoreChanges {
+		// Accept any scanned key whose fingerprint matches the configured one.
+		for _, k := range keys {
+			if k.Fingerprint == opts.HostKeyFingerprint {
+				return k, nil
+			}
+		}
+		return result, fmt.Errorf("host key fingerprint mismatch: none of the returned keys matched %s", opts.HostKeyFingerprint)
+	}
+
+	// No configured fingerprint (or ignore-changes): prefer ED25519, then ECDSA, then RSA.
+	var selected HostKeyResult
+	for _, k := range keys {
+		if k.Algorithm == "ssh-ed25519" {
+			selected = k
+			break
+		}
+	}
+	if selected.Fingerprint == "" {
+		for _, k := range keys {
+			if strings.HasPrefix(k.Algorithm, "ecdsa-sha2-") {
+				selected = k
+				break
+			}
+		}
+	}
+	if selected.Fingerprint == "" {
+		for _, k := range keys {
+			if k.Algorithm == "ssh-rsa" {
+				selected = k
+				break
+			}
+		}
+	}
+	if selected.Fingerprint == "" {
+		selected = keys[0]
+	}
+
+	return selected, nil
+}
+
+// PrepareKnownHosts writes the accepted host key to a temporary known_hosts
+// file and returns a closure that should be called to clean it up.
+func (r *Runner) PrepareKnownHosts(opts Options, keyLine string) (string, func(), error) {
+	dir := os.TempDir()
+	f, err := os.CreateTemp(dir, "certdeploy-kh-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create known_hosts temp file: %w", err)
+	}
+	if _, err := f.WriteString(keyLine + "\n"); err != nil {
+		_ = f.Close()
+		return "", nil, err
+	}
+	if err := f.Close(); err != nil {
+		return "", nil, err
+	}
+	cleanup := func() {
+		_ = os.Remove(f.Name())
+	}
+	return f.Name(), cleanup, nil
+}
+
+// baseArgsWithHostKey returns base args plus the known_hosts file and strict checking.
+func (r *Runner) baseArgsWithHostKey(opts Options, knownHostsFile string) []string {
+	args := r.baseArgs(opts)
+	args = append(args,
+		"-o", "StrictHostKeyChecking=yes",
+		"-o", "UserKnownHostsFile="+knownHostsFile,
+		"-o", "HostKeyAlgorithms="+hostKeyAlgorithms(),
+	)
+	return args
+}
+
+func hostKeyAlgorithms() string {
+	return "ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ssh-rsa,rsa-sha2-256,rsa-sha2-512"
+}
+
+func (r *Runner) scanHostKeys(ctx context.Context, host string, port int) ([]HostKeyResult, error) {
+	args := []string{"-T", "10", "-p", fmt.Sprintf("%d", port), host}
 	cmd := exec.CommandContext(ctx, "ssh-keyscan", args...)
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("ssh-keyscan failed: %w: %s", err, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("ssh-keyscan failed: %w: %s", err, strings.TrimSpace(string(out)))
 	}
-	// TODO: parse and return SHA256 fingerprint.
-	return strings.TrimSpace(string(out)), nil
+
+	var results []HostKeyResult
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fp, err := fingerprintFromKeyLine(line)
+		if err != nil {
+			r.logger.Debug("skipping host key line", slog.String("component", "ssh"), slog.Any("error", err))
+			continue
+		}
+		algo := keyAlgorithmFromLine(line)
+		results = append(results, HostKeyResult{Line: line, Fingerprint: fp, Algorithm: algo})
+	}
+	return results, nil
+}
+
+func keyAlgorithmFromLine(line string) string {
+	fields := strings.Fields(line)
+	if len(fields) >= 2 {
+		return fields[1]
+	}
+	return ""
+}
+
+func fingerprintFromKeyLine(line string) (string, error) {
+	// ssh-keygen -lf - expects a known_hosts line on stdin.
+	cmd := exec.Command("ssh-keygen", "-lf", "-")
+	cmd.Stdin = strings.NewReader(line + "\n")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("ssh-keygen -lf failed: %w", err)
+	}
+	// Output: 256 SHA256:xxxxxxx hostname (ED25519)
+	fields := strings.Fields(string(out))
+	if len(fields) < 2 {
+		return "", fmt.Errorf("unexpected ssh-keygen output: %s", string(out))
+	}
+	return fields[1], nil
+}
+
+// FingerprintFromPublicKey computes the standard SSH SHA256 fingerprint for a
+// public key line (e.g. the content of a .pub file).
+func FingerprintFromPublicKey(pub string) (string, error) {
+	parts := strings.Fields(pub)
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid public key")
+	}
+	blob, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(blob)
+	return "SHA256:" + base64.RawStdEncoding.EncodeToString(sum[:]), nil
+}
+
+var hostLineHostRE = regexp.MustCompile(`^([^\s]+)\s`)
+
+// NormalizeHostKeyLine ensures the line uses the plain hostname so OpenSSH
+// matches it regardless of how ssh-keyscan formatted the entry.
+func NormalizeHostKeyLine(line, host string) string {
+	return hostLineHostRE.ReplaceAllString(line, host+" ")
+}
+
+// KnownHostsFileFor prepares and returns the path to a known_hosts file
+// containing the accepted key for opts.Host, plus a cleanup function and the
+// key's algorithm.
+func (r *Runner) KnownHostsFileFor(ctx context.Context, opts Options) (string, func(), string, string, error) {
+	res, err := r.ScanAndVerifyHostKey(ctx, opts)
+	if err != nil {
+		return "", nil, "", "", err
+	}
+	line := NormalizeHostKeyLine(res.Line, opts.Host)
+	path, cleanup, err := r.PrepareKnownHosts(opts, line)
+	return path, cleanup, res.Fingerprint, res.Algorithm, err
+}
+
+// HostKeyAlgorithm returns the algorithm of the accepted host key for opts.Host.
+func (r *Runner) HostKeyAlgorithm(ctx context.Context, opts Options) (string, error) {
+	res, err := r.ScanAndVerifyHostKey(ctx, opts)
+	if err != nil {
+		return "", err
+	}
+	return res.Algorithm, nil
+}
+
+// TempDir returns the system temp directory for this runner.
+func (r *Runner) TempDir() string {
+	return filepath.Join(os.TempDir(), "certdeploy")
 }

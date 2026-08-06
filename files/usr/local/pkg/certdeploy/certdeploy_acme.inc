@@ -7,7 +7,8 @@ function certdeploy_acme_certificates() {
 	foreach (config_get_path('installedpackages/acme/certificates/item', []) as $cert) {
 		$cm = lookup_cert_by_name($cert['name']);
 		$cm = $cm['item'] ?? [];
-		$descr = $cm['descr'] ?? $cert['name'];
+		$descr = $cm['descr'] ?? '';
+		$basename = $cert['name'];
 
 		$sans = [];
 		if (is_array($cert['a_domainlist']) && is_array($cert['a_domainlist']['item'])) {
@@ -28,9 +29,9 @@ function certdeploy_acme_certificates() {
 			'cn' => $cm['cn'] ?? '',
 			'sans' => $sans,
 			'paths' => [
-				'cert' => "/conf/acme/{$descr}.crt",
-				'key' => "/conf/acme/{$descr}.key",
-				'fullchain' => "/conf/acme/{$descr}.fullchain",
+				'cert' => "/conf/acme/{$basename}.crt",
+				'key' => "/conf/acme/{$basename}.key",
+				'fullchain' => "/conf/acme/{$basename}.fullchain",
 			],
 		];
 	}

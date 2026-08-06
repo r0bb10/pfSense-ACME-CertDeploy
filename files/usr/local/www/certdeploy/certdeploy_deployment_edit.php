@@ -18,6 +18,10 @@ if ($id !== '') {
 			break;
 		}
 	}
+	$runtime_state = certdeploy_deployment_runtime_state($id);
+	if (empty($pconfig['host_key_fingerprint']) && !empty($runtime_state['host_key_fingerprint'])) {
+		$pconfig['host_key_fingerprint'] = $runtime_state['host_key_fingerprint'];
+	}
 }
 
 if ($_POST) {

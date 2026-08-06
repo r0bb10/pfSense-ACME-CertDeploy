@@ -16,6 +16,7 @@ type DeploymentState struct {
 	LastDeployedFingerprint string `json:"last_deployed_fingerprint"`
 	LastDeployedTime        int64  `json:"last_deployed_time"`
 	LastRunStatus           string `json:"last_run_status"`
+	HostKeyFingerprint      string `json:"host_key_fingerprint"`
 }
 
 // Manager persists runtime state.

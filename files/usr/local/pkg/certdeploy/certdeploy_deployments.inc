@@ -16,14 +16,28 @@ function certdeploy_deployment_get($id) {
 	return [null, []];
 }
 
+function certdeploy_deployment_runtime_state($dep_id) {
+	$path = '/var/db/certdeploy/state.json';
+	if (!is_readable($path)) {
+		return [];
+	}
+	$data = json_decode(file_get_contents($path), true);
+	if (!is_array($data) || !is_array($data['deployments'] ?? null)) {
+		return [];
+	}
+	return $data['deployments'][$dep_id] ?? [];
+}
+
 function certdeploy_deployment_state($dep) {
 	if (($dep['enabled'] ?? '') !== 'on') {
 		return 'disabled';
 	}
-	if (($dep['last_run_status'] ?? '') === '') {
+	$state = certdeploy_deployment_runtime_state($dep['id'] ?? '');
+	$status = $state['last_run_status'] ?? $dep['last_run_status'] ?? '';
+	if ($status === '') {
 		return 'never deployed';
 	}
-	return $dep['last_run_status'];
+	return $status;
 }
 
 function certdeploy_deployment_artifact_sources($certificate_name) {
