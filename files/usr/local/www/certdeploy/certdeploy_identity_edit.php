@@ -1,0 +1,217 @@
+<?php
+
+require_once('functions.inc');
+require_once('guiconfig.inc');
+require_once('certdeploy.inc');
+
+$shortcut_section = 'certdeploy';
+
+$id = $_GET['id'] ?? $_POST['id'] ?? '';
+$is_new = true;
+$pconfig = [];
+
+if ($id !== '') {
+	foreach (certdeploy_identities() as $idx => $ident) {
+		if (($ident['id'] ?? '') === $id) {
+			$pconfig = $ident;
+			$is_new = false;
+			break;
+		}
+	}
+}
+
+if ($_POST && isset($_POST['act'])) {
+	if ($_POST['act'] === 'genkey') {
+		$type = $_POST['genkey_type'] ?? 'ed25519';
+		$name = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['genkey_name'] ?? 'new');
+		$result = certdeploy_identity_generate($name, $type);
+		header('Content-Type: application/json');
+		echo json_encode($result);
+		exit;
+	}
+
+	if ($_POST['act'] === 'save') {
+		$name = trim($_POST['name'] ?? '');
+		if ($name === '') {
+			$input_errors[] = gettext('Name is required.');
+		} elseif (!preg_match('/^[a-zA-Z0-9_-]+$/', $name)) {
+			$input_errors[] = gettext('Name may contain only letters, numbers, underscores, and hyphens.');
+		}
+
+		$key_type = $_POST['key_type'] ?? 'ed25519';
+		$private_key_path = $_POST['private_key_path'] ?? '';
+		$key_pem = $_POST['key_pem'] ?? '';
+
+		if ($private_key_path === '' && $key_pem === '') {
+			$input_errors[] = gettext('Either generate or import a private key.');
+		}
+
+		if (empty($input_errors)) {
+			if ($key_pem !== '') {
+				$private_key_path = certdeploy_identity_save_import($name, $key_pem);
+			}
+			$public_key = certdeploy_identity_public_key($private_key_path);
+			$fingerprint = certdeploy_identity_fingerprint($private_key_path);
+
+			$ident = [
+				'id' => $is_new ? certdeploy_uuid() : $id,
+				'name' => $name,
+				'enabled' => empty($_POST['enabled']) ? 'off' : 'on',
+				'description' => $_POST['description'] ?? '',
+				'key_type' => $key_type,
+				'private_key_path' => $private_key_path,
+				'public_key' => $public_key,
+				'fingerprint' => $fingerprint,
+			];
+
+			if ($is_new) {
+				$idx = certdeploy_array_next_index('installedpackages/certdeploy/identities');
+			} else {
+				foreach (certdeploy_identities() as $i => $existing) {
+					if (($existing['id'] ?? '') === $id) {
+						$idx = $i;
+						break;
+					}
+				}
+			}
+			config_set_path("installedpackages/certdeploy/identities/item/{$idx}", $ident);
+			write_config('CertDeploy identity saved');
+			certdeploy_sync();
+			header('Location: /certdeploy/certdeploy_identities.php');
+			exit;
+		}
+	}
+}
+
+$pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Identities'), $is_new ? gettext('Add') : gettext('Edit')];
+include('head.inc');
+
+if (!empty($input_errors)) {
+	print_input_errors($input_errors);
+}
+
+$tab_array = [
+	[gettext('General'), false, '/certdeploy/certdeploy_general.php'],
+	[gettext('Identities'), true, '/certdeploy/certdeploy_identities.php'],
+	[gettext('Deployments'), false, '/certdeploy/certdeploy_deployments.php'],
+	[gettext('Log'), false, '/certdeploy/certdeploy_log.php'],
+];
+display_top_tabs($tab_array);
+
+$form = new Form(false);
+
+$section = new Form_Section(gettext('Identity'));
+
+$section->addInput(new Form_Checkbox(
+	'enabled',
+	gettext('Enable'),
+	gettext('Enable this identity'),
+	($pconfig['enabled'] ?? '') === 'on'
+));
+
+$section->addInput(new Form_Input(
+	'name',
+	gettext('Name'),
+	'text',
+	$pconfig['name'] ?? ''
+));
+
+$section->addInput(new Form_Input(
+	'description',
+	gettext('Description'),
+	'text',
+	$pconfig['description'] ?? ''
+));
+
+$section->addInput(new Form_Select(
+	'key_type',
+	gettext('Key Type'),
+	$pconfig['key_type'] ?? 'ed25519',
+	['ed25519' => 'Ed25519', 'rsa4096' => 'RSA 4096', 'rsa3072' => 'RSA 3072', 'rsa2048' => 'RSA 2048']
+));
+
+$section->addInput(new Form_Textarea(
+	'key_pem',
+	gettext('Import Private Key'),
+	$pconfig['key_pem'] ?? ''
+))->setHelp(gettext('Paste an existing private key in PEM format. Leave blank to generate or keep existing key.'));
+
+$section->addInput(new Form_Input(
+	'private_key_path',
+	gettext('Private Key Path'),
+	'text',
+	$pconfig['private_key_path'] ?? ''
+))->setReadonly()->setHelp(gettext('Path where the private key is stored on pfSense.'));
+
+$section->addInput(new Form_Input(
+	'public_key',
+	gettext('Public Key'),
+	'text',
+	$pconfig['public_key'] ?? ''
+))->setReadonly()->setHelp(gettext('Copy this public key to the remote host authorized_keys.'));
+
+$section->addInput(new Form_Input(
+	'fingerprint',
+	gettext('Fingerprint'),
+	'text',
+	$pconfig['fingerprint'] ?? ''
+))->setReadonly();
+
+$form->add($section);
+
+print($form);
+
+?>
+
+<nav class="action-buttons">
+	<?php if ($is_new || ($pconfig['private_key_path'] ?? '') === ''): ?>
+	<button type="button" id="genkey" class="btn btn-info btn-sm">
+		<i class="fa-solid fa-key icon-embed-btn"></i>
+		<?=gettext('Generate Key')?>
+	</button>
+	<?php endif; ?>
+	<button type="submit" name="act" value="save" class="btn btn-primary btn-sm">
+		<i class="fa-solid fa-save icon-embed-btn"></i>
+		<?=gettext('Save')?>
+	</button>
+	<a href="/certdeploy/certdeploy_identities.php" class="btn btn-secondary btn-sm">
+		<?=gettext('Cancel')?>
+	</a>
+</nav>
+
+<script type="text/javascript">
+//<![CDATA[
+events.push(function() {
+	$('#genkey').click(function() {
+		var name = $('#name').val();
+		if (name === '') {
+			alert('<?=gettext("Enter a name before generating a key.")?>');
+			return;
+		}
+		$.ajax({
+			url: '/certdeploy/certdeploy_identity_edit.php',
+			type: 'POST',
+			data: {
+				act: 'genkey',
+				genkey_name: name,
+				genkey_type: $('#key_type').val()
+			},
+			success: function(data) {
+				if (data.error) {
+					alert(data.error);
+				} else {
+					$('#private_key_path').val(data.private_key_path);
+					$('#public_key').val(data.public_key);
+					$('#fingerprint').val(data.fingerprint);
+				}
+			},
+			error: function() {
+				alert('<?=gettext("Key generation failed.")?>');
+			}
+		});
+	});
+});
+//]]>
+</script>
+
+<?php include('foot.inc'); ?>

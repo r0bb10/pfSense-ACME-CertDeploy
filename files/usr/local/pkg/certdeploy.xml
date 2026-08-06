@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE packagegui SYSTEM "../schema/packages.dtd">
+<?xml-stylesheet type="text/xsl" href="../xsl/package.xsl"?>
+<packagegui>
+	<name>certdeploy</name>
+	<version>%%PKGVERSION%%</version>
+	<title>Services: CertDeploy</title>
+	<addedit_string>CertDeploy: changed settings</addedit_string>
+	<include_file>/usr/local/pkg/certdeploy.inc</include_file>
+	<configpath>installedpackages->certdeploy->config</configpath>
+	<aftersaveredirect>/certdeploy/certdeploy_general.php</aftersaveredirect>
+	<service>
+		<name>certdeploy</name>
+		<rcfile>certdeploy</rcfile>
+		<executable>certdeployd</executable>
+		<description>CertDeploy certificate deployment daemon</description>
+	</service>
+	<menu>
+		<name>CertDeploy</name>
+		<section>Services</section>
+		<configfile>certdeploy.xml</configfile>
+		<url>/certdeploy/certdeploy_general.php</url>
+	</menu>
+	<tabs>
+		<tab>
+			<text>General</text>
+			<url>/certdeploy/certdeploy_general.php</url>
+			<active/>
+		</tab>
+		<tab>
+			<text>Identities</text>
+			<url>/certdeploy/certdeploy_identities.php</url>
+		</tab>
+		<tab>
+			<text>Deployments</text>
+			<url>/certdeploy/certdeploy_deployments.php</url>
+		</tab>
+		<tab>
+			<text>Log</text>
+			<url>/certdeploy/certdeploy_log.php</url>
+		</tab>
+	</tabs>
+	<custom_php_install_command>certdeploy_install();</custom_php_install_command>
+	<custom_php_pre_deinstall_command>certdeploy_deinstall();</custom_php_pre_deinstall_command>
+	<custom_php_resync_config_command>certdeploy_sync();</custom_php_resync_config_command>
+</packagegui>

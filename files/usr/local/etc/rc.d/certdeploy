@@ -1,0 +1,28 @@
+#!/bin/sh
+# shellcheck disable=SC1091,SC2034,SC2086
+
+# PROVIDE: certdeploy
+# REQUIRE: NETWORKING
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="certdeploy"
+rcvar="certdeploy_enable"
+pidfile="/var/run/certdeploy/certdeploy.pid"
+procname="/usr/local/sbin/certdeployd"
+command="/usr/sbin/daemon"
+
+load_rc_config "${name}"
+
+: "${certdeploy_enable:=NO}"
+: "${certdeploy_config_dir:=/usr/local/etc/certdeploy}"
+: "${certdeploy_log_file:=/var/log/certdeploy.log}"
+: "${certdeploy_socket:=/var/run/certdeploy/certdeploy.sock}"
+
+required_dirs="${certdeploy_config_dir}"
+
+command_args="-S -p ${pidfile} -T certdeploy -o ${certdeploy_log_file} -f ${procname} \
+	-config=${certdeploy_config_dir}/config.json"
+
+run_rc_command "$1"

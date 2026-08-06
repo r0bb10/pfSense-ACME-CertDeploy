@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pfsensepkgs>
+	<package>
+		<name>CertDeploy</name>
+		<internal_name>certdeploy</internal_name>
+		<descr><![CDATA[Deploy ACME certificates to remote hosts over SSH.]]></descr>
+		<pkginfolink>https://github.com/r0bb10/pfSense-CertDeploy</pkginfolink>
+		<version>%%PKGVERSION%%</version>
+		<configurationfile>certdeploy.xml</configurationfile>
+	</package>
+</pfsensepkgs>

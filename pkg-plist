@@ -1,0 +1,22 @@
+/etc/inc/priv/certdeploy.priv.inc
+etc/rc.d/certdeploy
+pkg/certdeploy.xml
+pkg/certdeploy.inc
+pkg/certdeploy/certdeploy_acme.inc
+pkg/certdeploy/certdeploy_general.inc
+pkg/certdeploy/certdeploy_identities.inc
+pkg/certdeploy/certdeploy_deployments.inc
+pkg/certdeploy/certdeploy_log.inc
+sbin/certdeployctl
+sbin/certdeployd
+%%DATADIR%%/info.xml
+www/certdeploy/certdeploy_general.php
+www/certdeploy/certdeploy_identities.php
+www/certdeploy/certdeploy_identity_edit.php
+www/certdeploy/certdeploy_deployments.php
+www/certdeploy/certdeploy_deployment_edit.php
+www/certdeploy/certdeploy_log.php
+www/shortcuts/pkg_certdeploy.inc
+@dir /etc/inc/priv
+@dir www/shortcuts
+@dir /var/db/certdeploy

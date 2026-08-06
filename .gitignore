@@ -1,1 +1,7 @@
 .dev/
+build/
+dist/
+src/certdeploy/go.sum
+*.log
+.stubs/
+.intelephenserc.json
