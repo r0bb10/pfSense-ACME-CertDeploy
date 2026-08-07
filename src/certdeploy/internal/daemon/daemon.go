@@ -56,7 +56,7 @@ func newLogger(path, level string) (*slog.Logger, *os.File, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	handler := slog.NewTextHandler(f, &slog.HandlerOptions{Level: parseLogLevel(level)})
+	handler := NewLogHandler(f, parseLogLevel(level))
 	return slog.New(handler), f, nil
 }
 
