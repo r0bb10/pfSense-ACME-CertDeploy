@@ -316,8 +316,7 @@ $section->addInput(new Form_Input(
 
 $form->add($section);
 
-// Advanced section
-$section = new Form_Section(gettext('Advanced'));
+$section = new Form_Section(gettext('Advanced'), 'advanced-panel', COLLAPSIBLE|SEC_CLOSED);
 
 $section->addInput(new Form_Input(
 	'connect_timeout',
