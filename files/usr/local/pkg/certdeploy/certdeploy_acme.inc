@@ -5,10 +5,24 @@ require_once('certs.inc');
 function certdeploy_acme_certificates() {
 	$certs = [];
 	foreach (config_get_path('installedpackages/acme/certificates/item', []) as $cert) {
+		$basename = $cert['name'];
+
+		$cert_path = "/conf/acme/{$basename}.crt";
+		$valid_from = '';
+		$valid_to = '';
+		$cn = '';
+		if (is_readable($cert_path)) {
+			$cert_info = openssl_x509_parse(file_get_contents($cert_path));
+			if ($cert_info !== false) {
+				$valid_from = !empty($cert_info['validFrom_time_t']) ? date('Y-m-d H:i:s', $cert_info['validFrom_time_t']) : '';
+				$valid_to = !empty($cert_info['validTo_time_t']) ? date('Y-m-d H:i:s', $cert_info['validTo_time_t']) : '';
+				$cn = $cert_info['subject']['CN'] ?? '';
+			}
+		}
+
 		$cm = lookup_cert_by_name($cert['name']);
 		$cm = $cm['item'] ?? [];
 		$descr = $cm['descr'] ?? '';
-		$basename = $cert['name'];
 
 		$sans = [];
 		if (is_array($cert['a_domainlist']) && is_array($cert['a_domainlist']['item'])) {
@@ -24,9 +38,9 @@ function certdeploy_acme_certificates() {
 			'descr' => $descr,
 			'status' => $cert['status'] ?? 'active',
 			'lastrenewal' => $cert['lastrenewal'] ?? 0,
-			'valid_from' => $cm['valid_from'] ?? '',
-			'valid_to' => $cm['valid_to'] ?? '',
-			'cn' => $cm['cn'] ?? '',
+			'valid_from' => $valid_from,
+			'valid_to' => $valid_to,
+			'cn' => $cn,
 			'sans' => $sans,
 			'paths' => [
 				'cert' => "/conf/acme/{$basename}.crt",
