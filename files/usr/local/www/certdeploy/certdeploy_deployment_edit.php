@@ -7,6 +7,7 @@ require_once('certdeploy.inc');
 $shortcut_section = 'certdeploy';
 
 $id = $_GET['id'] ?? $_POST['id'] ?? '';
+$dup = $_GET['dup'] ?? '';
 $is_new = true;
 $pconfig = [];
 
@@ -22,6 +23,15 @@ if ($id !== '') {
 	if (empty($pconfig['host_key_fingerprint']) && !empty($runtime_state['host_key_fingerprint'])) {
 		$pconfig['host_key_fingerprint'] = $runtime_state['host_key_fingerprint'];
 	}
+} elseif ($dup !== '') {
+	foreach (certdeploy_deployments() as $idx => $dep) {
+		if (($dep['id'] ?? '') === $dup) {
+			$pconfig = $dep;
+			break;
+		}
+	}
+	// Clear identity and runtime state so the copy is saved as a new deployment.
+	unset($pconfig['id'], $pconfig['last_deployed_fingerprint'], $pconfig['last_deployed_time'], $pconfig['last_run_status']);
 }
 
 if ($_POST) {

@@ -40,6 +40,19 @@ function certdeploy_deployment_state($dep) {
 	return $status;
 }
 
+function certdeploy_deployment_status_text($dep) {
+	$state = certdeploy_deployment_runtime_state($dep['id'] ?? '');
+	$time = $state['last_deployed_time'] ?? $dep['last_deployed_time'] ?? 0;
+	$status = $state['last_run_status'] ?? $dep['last_run_status'] ?? '';
+	if ($status === '') {
+		$status = 'never';
+	}
+	return [
+		'time' => $time,
+		'status' => $status,
+	];
+}
+
 function certdeploy_deployment_artifact_sources($certificate_name) {
 	if ($certificate_name === '') {
 		return [];
