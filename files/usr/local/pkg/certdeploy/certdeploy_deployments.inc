@@ -53,6 +53,32 @@ function certdeploy_deployment_status_text($dep) {
 	];
 }
 
+function certdeploy_deployment_sync_status($dep) {
+	$cert_name = $dep['certificate_name'] ?? '';
+	$stored = certdeploy_deployment_runtime_state($dep['id'] ?? '')['last_deployed_fingerprint'] ?? $dep['last_deployed_fingerprint'] ?? '';
+	if ($cert_name === '') {
+		return ['state' => 'nocert', 'stored' => $stored, 'current' => '', 'message' => gettext('No certificate')];
+	}
+	$certs = certdeploy_acme_certificates();
+	if (!isset($certs[$cert_name])) {
+		return ['state' => 'missing', 'stored' => $stored, 'current' => '', 'message' => gettext('Certificate missing')];
+	}
+	if (($certs[$cert_name]['status'] ?? '') !== 'active') {
+		return ['state' => 'disabled', 'stored' => $stored, 'current' => '', 'message' => gettext('Certificate disabled')];
+	}
+	$current = certdeploy_acme_certificate_fingerprint($cert_name);
+	if ($current === '') {
+		return ['state' => 'error', 'stored' => $stored, 'current' => '', 'message' => gettext('Cannot read certificate')];
+	}
+	if ($stored === '') {
+		return ['state' => 'outdated', 'stored' => '', 'current' => $current, 'message' => gettext('Never deployed')];
+	}
+	if ($current === $stored) {
+		return ['state' => 'synced', 'stored' => $stored, 'current' => $current, 'message' => gettext('In sync')];
+	}
+	return ['state' => 'outdated', 'stored' => $stored, 'current' => $current, 'message' => gettext('Outdated')];
+}
+
 function certdeploy_deployment_artifact_sources($certificate_name) {
 	if ($certificate_name === '') {
 		return [];

@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"time"
@@ -32,6 +33,34 @@ type Paths struct {
 	Fullchain string
 }
 
+// pfSenseXML mirrors the parts of /cf/conf/config.xml needed for ACME discovery.
+type pfSenseXML struct {
+	InstalledPkgs struct {
+		ACME struct {
+			Certificates struct {
+				Items []acmeCertXML `xml:"item"`
+			} `xml:"certificates"`
+		} `xml:"acme"`
+	} `xml:"installedpackages"`
+}
+
+type acmeCertXML struct {
+	Name        string            `xml:"name"`
+	Description string            `xml:"descr"`
+	Status      string            `xml:"status"`
+	LastRenewal int64             `xml:"lastrenewal"`
+	DomainList  acmeDomainListXML `xml:"a_domainlist"`
+}
+
+type acmeDomainListXML struct {
+	Items []acmeDomainXML `xml:"item"`
+}
+
+type acmeDomainXML struct {
+	Name   string `xml:"name"`
+	Status string `xml:"status"`
+}
+
 // Discoverer reads ACME certificate state from pfSense config.xml.
 type Discoverer struct {
 	cfg *config.Config
@@ -43,9 +72,64 @@ func New(cfg *config.Config) *Discoverer {
 
 // Discover returns ACME certificates available for deployment.
 func (d *Discoverer) Discover() ([]Certificate, error) {
-	// Placeholder: real implementation will parse config.xml.
-	// For now return an empty slice so the daemon compiles.
-	return []Certificate{}, nil
+	data, err := os.ReadFile(d.cfg.ConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config: %w", err)
+	}
+
+	var parsed pfSenseXML
+	if err := xml.Unmarshal(data, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	var certs []Certificate
+	for _, raw := range parsed.InstalledPkgs.ACME.Certificates.Items {
+		if raw.Name == "" {
+			continue
+		}
+		paths := Paths{
+			Cert:      fmt.Sprintf("/conf/acme/%s.crt", raw.Name),
+			Key:       fmt.Sprintf("/conf/acme/%s.key", raw.Name),
+			Fullchain: fmt.Sprintf("/conf/acme/%s.fullchain", raw.Name),
+		}
+		cert := Certificate{
+			Name:        raw.Name,
+			Description: raw.Description,
+			Status:      raw.Status,
+			LastRenewal: raw.LastRenewal,
+			Paths:       paths,
+		}
+
+		for _, domain := range raw.DomainList.Items {
+			if domain.Status == "disable" {
+				continue
+			}
+			if domain.Name != "" {
+				cert.SANs = append(cert.SANs, domain.Name)
+			}
+		}
+		if len(cert.SANs) > 0 {
+			cert.CN = cert.SANs[0]
+		}
+
+		if _, err := os.Stat(paths.Fullchain); err == nil {
+			fp, err := Fingerprint(paths.Fullchain)
+			if err == nil {
+				cert.Fingerprint = fp
+			}
+			if c, err := ParseCertificate(paths.Cert); err == nil {
+				cert.ValidFrom = c.NotBefore.Format(time.RFC3339)
+				cert.ValidTo = c.NotAfter.Format(time.RFC3339)
+				if cert.CN == "" {
+					cert.CN = c.Subject.CommonName
+				}
+			}
+		}
+
+		certs = append(certs, cert)
+	}
+
+	return certs, nil
 }
 
 // Fingerprint returns SHA256 of the fullchain file content.

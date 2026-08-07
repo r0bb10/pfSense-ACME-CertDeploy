@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"certdeploy/internal/acme"
 	"certdeploy/internal/config"
 	"certdeploy/internal/ssh"
 	"certdeploy/internal/state"
@@ -60,6 +61,7 @@ type Deployment struct {
 	UseSFTP                bool
 	LegacySCPFallback      bool
 	DisableConnectionReuse bool
+	AutoDeploy             bool
 	ExtraSSHOpts           string
 	Artifacts              []Artifact
 	Destination            Destination
@@ -71,6 +73,7 @@ type Deployment struct {
 // RunResult contains the outcome of a deployment run.
 type RunResult struct {
 	HostKeyFingerprint string
+	CurrentFingerprint string
 	Error              error
 }
 
@@ -79,7 +82,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 	result := RunResult{}
 	if !d.Enabled {
 		result.Error = fmt.Errorf("deployment is disabled")
-		e.record(d.ID, "failed", "", result.Error)
+		e.record(d.ID, "failed", "", "", result.Error)
 		return result
 	}
 
@@ -103,7 +106,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 	khFile, cleanup, fingerprint, algorithm, err := e.ssh.KnownHostsFileFor(ctx, opts)
 	if err != nil {
 		result.Error = err
-		e.record(d.ID, "failed", "", err)
+		e.record(d.ID, "failed", "", "", err)
 		return result
 	}
 	if cleanup != nil {
@@ -117,7 +120,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		socket, cleanupMaster, err := e.ssh.StartControlMaster(ctx, opts)
 		if err != nil {
 			result.Error = err
-			e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+			e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 			return result
 		}
 		defer cleanupMaster()
@@ -133,14 +136,14 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		cmd := fmt.Sprintf("mkdir -p %s", shellQuote(dest.Directory))
 		if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
 			result.Error = err
-			e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+			e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 			return result
 		}
 		if dest.DirMode != "" {
 			cmd = fmt.Sprintf("chmod %s %s", dest.DirMode, shellQuote(dest.Directory))
 			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
 				result.Error = err
-				e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+				e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 				return result
 			}
 		}
@@ -156,7 +159,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 			cmd = fmt.Sprintf("chown %s:%s %s", owner, group, shellQuote(dest.Directory))
 			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
 				result.Error = err
-				e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+				e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 				return result
 			}
 		}
@@ -171,14 +174,14 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 			tmp := final + ".certdeploy-tmp"
 			if err := e.ssh.CopyFile(ctx, opts, src, tmp); err != nil {
 				result.Error = err
-				e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+				e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 				return result
 			}
 			if art.Mode != "" {
 				cmd := fmt.Sprintf("chmod %s %s", art.Mode, shellQuote(tmp))
 				if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
 					result.Error = err
-					e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+					e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 					return result
 				}
 			}
@@ -194,7 +197,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 				cmd := fmt.Sprintf("chown %s:%s %s", owner, group, shellQuote(tmp))
 				if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
 					result.Error = err
-					e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+					e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 					return result
 				}
 			}
@@ -205,7 +208,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 	if hasFiles && d.PostUploadCmd != "" {
 		if _, err := e.ssh.RunCommand(ctx, opts, d.PostUploadCmd); err != nil {
 			result.Error = err
-			e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+			e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 			return result
 		}
 	}
@@ -218,7 +221,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 			cmd := fmt.Sprintf("mv -f %s %s", shellQuote(tmp), shellQuote(final))
 			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
 				result.Error = err
-				e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+				e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 				return result
 			}
 		}
@@ -228,7 +231,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 	if hasFiles && d.ValidationCmd != "" {
 		if _, err := e.ssh.RunCommand(ctx, opts, d.ValidationCmd); err != nil {
 			result.Error = err
-			e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+			e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 			return result
 		}
 	}
@@ -237,22 +240,29 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 	if hasFiles && d.ReloadCmd != "" {
 		if _, err := e.ssh.RunCommand(ctx, opts, d.ReloadCmd); err != nil {
 			result.Error = err
-			e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+			e.record(d.ID, "failed", result.HostKeyFingerprint, "", err)
 			return result
 		}
 	}
 
-	// 7. Record success.
+	// 7. Record success and current certificate fingerprint.
+	if hasFiles && d.CertificateName != "" {
+		fp, fpErr := acme.Fingerprint(filepath.Join(d.CertificateBase, d.CertificateName+".fullchain"))
+		if fpErr == nil {
+			result.CurrentFingerprint = fp
+		}
+	}
 	e.logger.Info("deployment completed", slog.String("component", "deploy"), slog.String("deployment", d.ID), slog.String("name", d.Name))
-	e.record(d.ID, "success", result.HostKeyFingerprint, nil)
+	e.record(d.ID, "success", result.HostKeyFingerprint, result.CurrentFingerprint, nil)
 	return result
 }
 
-func (e *Engine) record(id, status, fingerprint string, err error) error {
+func (e *Engine) record(id, status, hostKeyFingerprint, certFingerprint string, err error) error {
 	ds := state.DeploymentState{
-		LastRunStatus:      status,
-		LastDeployedTime:   time.Now().Unix(),
-		HostKeyFingerprint: fingerprint,
+		LastRunStatus:           status,
+		LastDeployedTime:        time.Now().Unix(),
+		HostKeyFingerprint:      hostKeyFingerprint,
+		LastDeployedFingerprint: certFingerprint,
 	}
 	if err != nil {
 		e.logger.Error("deployment failed", slog.String("component", "deploy"), slog.String("deployment", id), slog.Any("error", err))

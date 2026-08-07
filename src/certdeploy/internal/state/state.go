@@ -7,9 +7,11 @@ import (
 	"sync"
 )
 
-// State holds the last deployed fingerprint per deployment.
+// State holds global and per-deployment runtime state.
 type State struct {
-	Deployments map[string]DeploymentState `json:"deployments"`
+	Deployments       map[string]DeploymentState `json:"deployments"`
+	LastScanTime      int64                      `json:"last_scan_time"`
+	LastReconcileTime int64                      `json:"last_reconcile_time"`
 }
 
 type DeploymentState struct {
@@ -74,5 +76,23 @@ func (m *Manager) UpdateDeployment(id string, ds DeploymentState) error {
 		return err
 	}
 	state.Deployments[id] = ds
+	return m.Save(state)
+}
+
+func (m *Manager) UpdateLastScanTime(t int64) error {
+	state, err := m.Load()
+	if err != nil {
+		return err
+	}
+	state.LastScanTime = t
+	return m.Save(state)
+}
+
+func (m *Manager) UpdateLastReconcileTime(t int64) error {
+	state, err := m.Load()
+	if err != nil {
+		return err
+	}
+	state.LastReconcileTime = t
 	return m.Save(state)
 }

@@ -85,4 +85,12 @@ function certdeploy_acme_certificate_options() {
 	return $opts;
 }
 
+function certdeploy_acme_certificate_fingerprint($name) {
+	$path = "/conf/acme/{$name}.fullchain";
+	if (!is_readable($path)) {
+		return '';
+	}
+	return 'SHA256:' . hash_file('sha256', $path);
+}
+
 ?>

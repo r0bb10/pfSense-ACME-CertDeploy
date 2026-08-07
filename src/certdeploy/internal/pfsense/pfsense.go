@@ -50,6 +50,7 @@ type deploymentXML struct {
 	UseSFTP                string         `xml:"use_sftp"`
 	LegacySCPFallback      string         `xml:"legacy_scp_fallback"`
 	DisableConnectionReuse string         `xml:"disable_connection_reuse"`
+	AutoDeploy             string         `xml:"auto_deploy"`
 	SSHOpts                string         `xml:"ssh_opts"`
 	Artifacts              artifactsXML   `xml:"artifacts"`
 	Destination            destinationXML `xml:"destination"`
@@ -146,6 +147,7 @@ func LoadDeployment(configPath, deploymentID string) (deploy.Deployment, error) 
 		UseSFTP:                parseBool(raw.UseSFTP),
 		LegacySCPFallback:      parseBool(raw.LegacySCPFallback),
 		DisableConnectionReuse: parseBool(raw.DisableConnectionReuse),
+		AutoDeploy:             parseBool(raw.AutoDeploy),
 		ExtraSSHOpts:           raw.SSHOpts,
 		Destination: deploy.Destination{
 			Directory: raw.Destination.Directory,
@@ -182,4 +184,77 @@ func certificateBase(acme acmeXML, name string) string {
 		}
 	}
 	return ""
+}
+
+// LoadAllDeployments loads all configured deployments from config.xml.
+func LoadAllDeployments(configPath string) ([]deploy.Deployment, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config: %w", err)
+	}
+
+	var cfg pfSenseConfig
+	if err := xml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	var deployments []deploy.Deployment
+	for i := range cfg.InstalledPkgs.CertDeploy.Deployments.Items {
+		raw := &cfg.InstalledPkgs.CertDeploy.Deployments.Items[i]
+		var identity *identityXML
+		for j := range cfg.InstalledPkgs.CertDeploy.Identities.Items {
+			item := &cfg.InstalledPkgs.CertDeploy.Identities.Items[j]
+			if item.ID == raw.IdentityID {
+				identity = item
+				break
+			}
+		}
+		if identity == nil {
+			continue
+		}
+
+		d := deploy.Deployment{
+			ID:                     raw.ID,
+			Name:                   raw.Name,
+			Enabled:                parseBool(raw.Enabled),
+			CertificateName:        raw.CertificateName,
+			Host:                   raw.Host,
+			Port:                   raw.Port,
+			User:                   identity.Name,
+			IdentityPath:           identity.PrivateKeyPath,
+			HostKeyFingerprint:     raw.HostKeyFingerprint,
+			HostKeyIgnoreChanges:   parseBool(raw.HostKeyIgnoreChanges),
+			Timeout:                raw.ConnectTimeout,
+			CMDTimeout:             raw.CMDTimeout,
+			UseSFTP:                parseBool(raw.UseSFTP),
+			LegacySCPFallback:      parseBool(raw.LegacySCPFallback),
+			DisableConnectionReuse: parseBool(raw.DisableConnectionReuse),
+			AutoDeploy:             parseBool(raw.AutoDeploy),
+			ExtraSSHOpts:           raw.SSHOpts,
+			Destination: deploy.Destination{
+				Directory: raw.Destination.Directory,
+				DirOwner:  raw.Destination.DirOwner,
+				DirGroup:  raw.Destination.DirGroup,
+				DirMode:   raw.Destination.DirMode,
+			},
+			PostUploadCmd: raw.PostUploadCmd,
+			ValidationCmd: raw.ValidationCmd,
+			ReloadCmd:     raw.ReloadCmd,
+		}
+		for _, art := range raw.Artifacts.Rows {
+			d.Artifacts = append(d.Artifacts, deploy.Artifact{
+				Source:    art.Source,
+				Filename:  art.Filename,
+				Owner:     art.Owner,
+				FileGroup: art.FileGroup,
+				Mode:      art.Mode,
+			})
+		}
+		if raw.CertificateName != "" {
+			d.CertificateBase = certificateBase(cfg.InstalledPkgs.ACME, raw.CertificateName)
+		}
+		deployments = append(deployments, d)
+	}
+
+	return deployments, nil
 }

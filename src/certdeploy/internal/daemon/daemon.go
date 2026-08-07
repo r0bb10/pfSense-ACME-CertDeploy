@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"certdeploy/internal/acme"
 	"certdeploy/internal/config"
 	"certdeploy/internal/deploy"
 	"certdeploy/internal/pfsense"
@@ -29,6 +30,8 @@ type Daemon struct {
 	ssh     *ssh.Runner
 	engine  *deploy.Engine
 	socket  string
+	acme    *acme.Discoverer
+	sem     chan struct{}
 }
 
 func parseLogLevel(level string) slog.Level {
@@ -66,6 +69,11 @@ func New(cfg *config.Config) (*Daemon, error) {
 	runner := ssh.NewRunner(cfg, lg)
 	engine := deploy.NewEngine(cfg, lg, stateMgr, runner)
 
+	maxConcurrent := cfg.MaxConcurrentTargets
+	if maxConcurrent < 1 {
+		maxConcurrent = 1
+	}
+
 	d := &Daemon{
 		cfg:     cfg,
 		logger:  lg,
@@ -74,6 +82,8 @@ func New(cfg *config.Config) (*Daemon, error) {
 		ssh:     runner,
 		engine:  engine,
 		socket:  cfg.Socket,
+		acme:    acme.New(cfg),
+		sem:     make(chan struct{}, maxConcurrent),
 	}
 
 	if err := os.MkdirAll("/var/run/certdeploy", 0750); err != nil {
@@ -130,6 +140,9 @@ func (d *Daemon) Run() error {
 }
 
 func (d *Daemon) runDeployment(id string) {
+	d.sem <- struct{}{}
+	defer func() { <-d.sem }()
+
 	dep, err := pfsense.LoadDeployment(d.cfg.ConfigPath, id)
 	if err != nil {
 		d.logger.Error("failed to load deployment", slog.String("component", "daemon"), slog.String("deployment", id), slog.Any("error", err))
@@ -184,11 +197,11 @@ func (d *Daemon) handleConn(ctx context.Context, conn net.Conn) {
 	case "status":
 		_, _ = fmt.Fprintln(conn, "running")
 	case "scan-acme":
+		go d.scanACME()
 		_, _ = fmt.Fprintln(conn, "scan scheduled")
-		// TODO: trigger scan.
 	case "deploy-outdated":
+		go d.reconcile()
 		_, _ = fmt.Fprintln(conn, "deploy outdated scheduled")
-		// TODO: trigger outdated deployment.
 	case "deploy":
 		if len(req.Args) < 2 {
 			_, _ = fmt.Fprintln(conn, "error: deploy requires a deployment id")
@@ -205,13 +218,15 @@ func (d *Daemon) scanLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Duration(d.cfg.ScanInterval) * time.Second)
 	defer ticker.Stop()
 
+	// Run once shortly after startup, then on ticker.
+	time.AfterFunc(5*time.Second, func() { d.scanACME() })
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			d.logger.Debug("scanning ACME state", slog.String("component", "daemon"))
-			// TODO: scan and queue deployments.
+			d.scanACME()
 		}
 	}
 }
@@ -225,8 +240,104 @@ func (d *Daemon) reconcileLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			d.logger.Debug("running reconciliation", slog.String("component", "daemon"))
-			// TODO: reconcile desired vs deployed state.
+			d.reconcile()
 		}
 	}
+}
+
+// scanACME discovers ACME certs, compares fingerprints, and queues auto-deploy runs.
+func (d *Daemon) scanACME() {
+	d.logger.Info("scanning ACME state", slog.String("component", "daemon"))
+	if err := d.state.UpdateLastScanTime(time.Now().Unix()); err != nil {
+		d.logger.Error("failed to update last scan time", slog.String("component", "daemon"), slog.Any("error", err))
+	}
+
+	ids, err := d.outdatedDeploymentIDs(false)
+	if err != nil {
+		d.logger.Error("ACME scan failed", slog.String("component", "daemon"), slog.Any("error", err))
+		return
+	}
+
+	for _, id := range ids {
+		d.logger.Info("auto-deploying outdated deployment", slog.String("component", "daemon"), slog.String("deployment", id))
+		go d.runDeployment(id)
+	}
+}
+
+// reconcile deploys all outdated certificates regardless of auto_deploy.
+func (d *Daemon) reconcile() {
+	d.logger.Info("running reconciliation", slog.String("component", "daemon"))
+	if err := d.state.UpdateLastReconcileTime(time.Now().Unix()); err != nil {
+		d.logger.Error("failed to update last reconcile time", slog.String("component", "daemon"), slog.Any("error", err))
+	}
+
+	ids, err := d.outdatedDeploymentIDs(true)
+	if err != nil {
+		d.logger.Error("reconciliation failed", slog.String("component", "daemon"), slog.Any("error", err))
+		return
+	}
+
+	for _, id := range ids {
+		d.logger.Info("reconciling outdated deployment", slog.String("component", "daemon"), slog.String("deployment", id))
+		go d.runDeployment(id)
+	}
+}
+
+// outdatedDeploymentIDs returns deployment IDs whose current ACME certificate
+// fingerprint differs from the last deployed fingerprint.
+// If reconcile is true, all enabled certificate-backed deployments are returned.
+// If reconcile is false, only deployments with auto_deploy enabled are returned.
+func (d *Daemon) outdatedDeploymentIDs(reconcile bool) ([]string, error) {
+	certs, err := d.acme.Discover()
+	if err != nil {
+		return nil, err
+	}
+
+	fpByName := make(map[string]string, len(certs))
+	for _, c := range certs {
+		if c.Status == "disabled" {
+			continue
+		}
+		fpByName[c.Name] = c.Fingerprint
+	}
+
+	deployments, err := pfsense.LoadAllDeployments(d.cfg.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+
+	st, err := d.state.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	var ids []string
+	for _, dep := range deployments {
+		if !dep.Enabled {
+			continue
+		}
+		if dep.CertificateName == "" {
+			continue
+		}
+		if !reconcile && !dep.AutoDeploy {
+			continue
+		}
+		currentFP, ok := fpByName[dep.CertificateName]
+		if !ok {
+			d.logger.Warn("deployment references unknown ACME certificate",
+				slog.String("component", "daemon"),
+				slog.String("deployment", dep.ID),
+				slog.String("certificate", dep.CertificateName))
+			continue
+		}
+		if currentFP == "" {
+			continue
+		}
+		stored := st.Deployments[dep.ID].LastDeployedFingerprint
+		if stored == "" || currentFP != stored {
+			ids = append(ids, dep.ID)
+		}
+	}
+
+	return ids, nil
 }
