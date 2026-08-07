@@ -179,7 +179,7 @@ $cert_files = ($pconfig['certificate_name'] ?? '') !== '' ? certdeploy_acme_cert
 		<input type="text" class="form-control artifact-mode" name="artifact_mode[]" placeholder="<?=gettext('Mode')?>" />
 	</div>
 	<div class="col-sm-1">
-		<button type="button" class="btn btn-warning btn-sm delete-artifact"><i class="fa-solid fa-trash-can"></i></button>
+		<button type="button" class="btn btn-warning btn-sm delete-artifact"><i class="fa-solid fa-trash-can"></i> <?=gettext('Delete')?></button>
 	</div>
 </div>
 <?php

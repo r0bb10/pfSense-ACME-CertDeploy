@@ -45,7 +45,7 @@ function certdeploy_acme_certificate_files($name) {
 	}
 	$cert = $certs[$name];
 	$files = [];
-	foreach (['crt' => 'Certificate', 'key' => 'Private Key', 'fullchain' => 'Full Chain'] as $type => $label) {
+	foreach (['cert' => 'Certificate', 'key' => 'Private Key', 'fullchain' => 'Full Chain'] as $type => $label) {
 		$path = $cert['paths'][$type] ?? '';
 		if ($path === '' || !is_readable($path)) {
 			continue;
@@ -61,7 +61,7 @@ function certdeploy_acme_certificate_files($name) {
 		$files[$basename] = [
 			'type' => $type,
 			'path' => $path,
-			'label' => "{$basename} ({$label})",
+			'label' => $basename,
 			'owner' => $owner,
 			'group' => $group,
 			'mode' => $stat !== false ? sprintf('%04o', $stat['mode'] & 07777) : '',
