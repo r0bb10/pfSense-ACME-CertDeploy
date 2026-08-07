@@ -61,7 +61,11 @@ func (r *Runner) execSSH(ctx context.Context, opts Options, remoteCmd string) ([
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	cmd.Env = os.Environ()
 	cmd.WaitDelay = 30 * time.Second
-	return cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return out, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return out, nil
 }
 
 func (r *Runner) execSCP(ctx context.Context, opts Options, src, dst string) error {
