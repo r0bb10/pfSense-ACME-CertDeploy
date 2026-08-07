@@ -101,6 +101,8 @@ function certdeploy_identity_save_import($name, $key_pem, $uuid = null) {
 	}
 	$path = $key_dir . '/' . ($uuid ?: preg_replace('/[^a-zA-Z0-9_-]/', '', $name));
 	$tmp = $path . '.tmp';
+	// Browsers may submit CRLF line endings in textareas; normalize to LF.
+	$key_pem = str_replace(["\r\n", "\r"], "\n", $key_pem);
 	file_put_contents($tmp, $key_pem);
 	chmod($tmp, 0600);
 	rename($tmp, $path);
