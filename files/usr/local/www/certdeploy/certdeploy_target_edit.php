@@ -68,7 +68,7 @@ if ($_POST) {
 	}
 }
 
-$pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Deployments'), $is_new ? gettext('Add') : gettext('Edit')];
+$pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Deployments'), $is_new ? gettext('Add Target') : gettext('Edit Target')];
 include('head.inc');
 
 if (!empty($input_errors)) {
@@ -77,7 +77,6 @@ if (!empty($input_errors)) {
 
 $tab_array = [
 	[gettext('General'), false, '/certdeploy/certdeploy_general.php'],
-	[gettext('Identities'), false, '/certdeploy/certdeploy_identities.php'],
 	[gettext('Deployments'), true, '/certdeploy/certdeploy_deployments.php'],
 	[gettext('Log'), false, '/certdeploy/certdeploy_log.php'],
 ];
@@ -476,7 +475,7 @@ events.push(function() {
 			return;
 		}
 		$.ajax({
-			url: '/certdeploy/certdeploy_deployment_edit.php',
+			url: '/certdeploy/certdeploy_target_edit.php',
 			type: 'POST',
 			data: {
 				act: 'certfiles',

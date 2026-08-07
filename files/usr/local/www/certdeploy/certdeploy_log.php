@@ -22,7 +22,6 @@ include('head.inc');
 
 $tab_array = [
 	[gettext('General'), false, '/certdeploy/certdeploy_general.php'],
-	[gettext('Identities'), false, '/certdeploy/certdeploy_identities.php'],
 	[gettext('Deployments'), false, '/certdeploy/certdeploy_deployments.php'],
 	[gettext('Log'), true, '/certdeploy/certdeploy_log.php'],
 ];

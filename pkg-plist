@@ -11,10 +11,9 @@ sbin/certdeployctl
 sbin/certdeployd
 %%DATADIR%%/info.xml
 www/certdeploy/certdeploy_general.php
-www/certdeploy/certdeploy_identities.php
 www/certdeploy/certdeploy_identity_edit.php
 www/certdeploy/certdeploy_deployments.php
-www/certdeploy/certdeploy_deployment_edit.php
+www/certdeploy/certdeploy_target_edit.php
 www/certdeploy/certdeploy_log.php
 www/shortcuts/pkg_certdeploy.inc
 @dir /etc/inc/priv

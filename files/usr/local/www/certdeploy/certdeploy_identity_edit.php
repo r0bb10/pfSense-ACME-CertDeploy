@@ -7,6 +7,7 @@ require_once('certdeploy.inc');
 $shortcut_section = 'certdeploy';
 
 $id = $_GET['id'] ?? $_POST['id'] ?? '';
+$dup = $_GET['dup'] ?? '';
 $is_new = true;
 $pconfig = [];
 
@@ -15,6 +16,28 @@ if ($id !== '') {
 		if (($ident['id'] ?? '') === $id) {
 			$pconfig = $ident;
 			$is_new = false;
+			break;
+		}
+	}
+} elseif ($dup !== '') {
+	foreach (certdeploy_identities() as $idx => $ident) {
+		if (($ident['id'] ?? '') === $dup) {
+			$new_id = certdeploy_uuid();
+			$old_path = $ident['private_key_path'] ?? '';
+			$new_path = '';
+			if ($old_path !== '' && is_file($old_path)) {
+				$new_path = dirname($old_path) . '/' . $new_id;
+				copy($old_path, $new_path);
+				chmod($new_path, 0600);
+				if (is_file($old_path . '.pub')) {
+					copy($old_path . '.pub', $new_path . '.pub');
+					chmod($new_path . '.pub', 0644);
+				}
+			}
+			$pconfig = $ident;
+			$pconfig['id'] = $new_id;
+			$pconfig['private_key_path'] = $new_path;
+			$pconfig['name'] = ($ident['name'] ?? '') . ' (copy)';
 			break;
 		}
 	}
@@ -104,13 +127,13 @@ if ($_POST) {
 			config_set_path("installedpackages/certdeploy/identities/item/{$idx}", $ident);
 			write_config('CertDeploy identity saved');
 			certdeploy_sync();
-			header('Location: /certdeploy/certdeploy_identities.php');
+			header('Location: /certdeploy/certdeploy_deployments.php');
 			exit;
 		}
 	}
 }
 
-$pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Identities'), $is_new ? gettext('Add') : gettext('Edit')];
+$pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Deployments'), $is_new ? gettext('Add Identity') : gettext('Edit Identity')];
 include('head.inc');
 
 if (!empty($input_errors)) {
@@ -126,8 +149,7 @@ if (!empty($input_errors)) {
 
 $tab_array = [
 	[gettext('General'), false, '/certdeploy/certdeploy_general.php'],
-	[gettext('Identities'), true, '/certdeploy/certdeploy_identities.php'],
-	[gettext('Deployments'), false, '/certdeploy/certdeploy_deployments.php'],
+	[gettext('Deployments'), true, '/certdeploy/certdeploy_deployments.php'],
 	[gettext('Log'), false, '/certdeploy/certdeploy_log.php'],
 ];
 display_top_tabs($tab_array);
@@ -186,7 +208,7 @@ $section->addInput(new Form_Input(
 
 $form->add($section);
 
-$form->addGlobal(new Form_Input('identity_id', '', 'hidden', $id));
+$form->addGlobal(new Form_Input('identity_id', '', 'hidden', $pconfig['id'] ?? $id));
 $form->addGlobal(new Form_Input('new_key_pem', '', 'hidden', ''));
 
 if ($is_new || ($pconfig['private_key_path'] ?? '') === '') {
@@ -315,7 +337,7 @@ events.push(function() {
 			type: 'POST',
 			data: {
 				act: 'regenkey',
-				identity_id: '<?=htmlspecialchars($id)?>',
+				identity_id: '<?=htmlspecialchars($pconfig['id'] ?? $id)?>',
 				genkey_name: $('#name').val(),
 				key_type: $('#key_type').val()
 			},

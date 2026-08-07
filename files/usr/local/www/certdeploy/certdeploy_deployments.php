@@ -10,16 +10,37 @@ $ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X
 
 if ($_POST && isset($_POST['act'], $_POST['id'])) {
 	$id = $_POST['id'];
+
+	// Identity actions
+	foreach (certdeploy_identities() as $idx => $ident) {
+		if (($ident['id'] ?? '') === $id) {
+			if ($_POST['act'] === 'delete') {
+				$path = $ident['private_key_path'] ?? '';
+				if ($path !== '' && is_file($path)) {
+					unlink($path);
+					if (is_file($path . '.pub')) {
+						unlink($path . '.pub');
+					}
+				}
+				config_del_path("installedpackages/certdeploy/identities/item/{$idx}");
+				write_config('CertDeploy identity deleted');
+				certdeploy_sync();
+			}
+			break;
+		}
+	}
+
+	// Target actions
 	foreach (certdeploy_deployments() as $idx => $dep) {
 		if (($dep['id'] ?? '') === $id) {
 			if ($_POST['act'] === 'delete') {
 				config_del_path("installedpackages/certdeploy/deployments/item/{$idx}");
-				write_config('CertDeploy deployment deleted');
+				write_config('CertDeploy target deleted');
 				certdeploy_sync();
 			} elseif ($_POST['act'] === 'toggle') {
 				$dep['enabled'] = (($dep['enabled'] ?? '') === 'on') ? 'off' : 'on';
 				config_set_path("installedpackages/certdeploy/deployments/item/{$idx}", $dep);
-				write_config('CertDeploy deployment toggled');
+				write_config('CertDeploy target toggled');
 				certdeploy_sync();
 			} elseif ($_POST['act'] === 'deploy') {
 				$output = shell_exec('/usr/local/sbin/certdeployctl deploy ' . escapeshellarg($id) . ' 2>&1');
@@ -32,6 +53,7 @@ if ($_POST && isset($_POST['act'], $_POST['id'])) {
 			break;
 		}
 	}
+
 	if (!$ajax) {
 		header('Location: /certdeploy/certdeploy_deployments.php');
 		exit;
@@ -50,7 +72,6 @@ if (!empty($savemsg)) {
 
 $tab_array = [
 	[gettext('General'), false, '/certdeploy/certdeploy_general.php'],
-	[gettext('Identities'), false, '/certdeploy/certdeploy_identities.php'],
 	[gettext('Deployments'), true, '/certdeploy/certdeploy_deployments.php'],
 	[gettext('Log'), false, '/certdeploy/certdeploy_log.php'],
 ];
@@ -67,7 +88,60 @@ display_top_tabs($tab_array);
 
 <div class="panel panel-default">
 	<div class="panel-heading">
-		<h2 class="panel-title"><?=gettext('Deployments')?></h2>
+		<h2 class="panel-title"><?=gettext('Identities')?></h2>
+	</div>
+	<div class="panel-body table-responsive">
+		<table class="table table-hover table-striped table-condensed">
+			<thead>
+				<tr>
+					<th><?=gettext('Name')?></th>
+					<th><?=gettext('Type')?></th>
+					<th><?=gettext('Fingerprint')?></th>
+					<th><?=gettext('Actions')?></th>
+				</tr>
+			</thead>
+			<tbody>
+<?php
+$identities = certdeploy_identities();
+if (count($identities) > 0):
+	foreach ($identities as $idx => $ident):
+		$id = htmlspecialchars($ident['id'] ?? '');
+?>
+				<tr>
+					<td><?=htmlspecialchars($ident['name'] ?? '')?></td>
+					<td><?=htmlspecialchars($ident['key_type'] ?? '')?></td>
+					<td><?=htmlspecialchars($ident['fingerprint'] ?? '')?></td>
+					<td class="action-icons">
+						<a class="fa-solid fa-pencil" title="<?=gettext('Edit')?>" href="/certdeploy/certdeploy_identity_edit.php?id=<?=$id?>"></a>
+						<a class="fa-solid fa-trash-can" title="<?=gettext('Delete')?>" href="?act=delete&amp;id=<?=$id?>" usepost></a>
+						<a class="fa-solid fa-copy" title="<?=gettext('Copy')?>" href="/certdeploy/certdeploy_identity_edit.php?dup=<?=$id?>"></a>
+					</td>
+				</tr>
+<?php
+	endforeach;
+else:
+?>
+				<tr>
+					<td colspan="4">
+						<?php print_info_box(gettext('No identities configured. Add an identity to use for SSH authentication.'), 'warning'); ?>
+					</td>
+				</tr>
+<?php endif; ?>
+			</tbody>
+		</table>
+	</div>
+</div>
+
+<nav class="action-buttons">
+	<a href="/certdeploy/certdeploy_identity_edit.php" class="btn btn-success btn-sm">
+		<i class="fa-solid fa-plus icon-embed-btn"></i>
+		<?=gettext('Add Identity')?>
+	</a>
+</nav>
+
+<div class="panel panel-default">
+	<div class="panel-heading">
+		<h2 class="panel-title"><?=gettext('Targets')?></h2>
 	</div>
 	<div class="panel-body table-responsive">
 		<table class="table table-hover table-striped table-condensed">
@@ -114,9 +188,9 @@ if (count($deployments) > 0):
 						</a>
 					</td>
 					<td class="action-icons">
-						<a class="fa-solid fa-pencil" title="<?=gettext('Edit')?>" href="/certdeploy/certdeploy_deployment_edit.php?id=<?=$id?>"></a>
-						<a class="fa-solid fa-trash-can" title="<?=gettext('Delete')?>" href="?act=delete&amp;id=<?=$id?>" usepost></a>
-						<a class="fa-solid fa-copy" title="<?=gettext('Copy')?>" href="/certdeploy/certdeploy_deployment_edit.php?dup=<?=$id?>"></a>
+					<a class="fa-solid fa-pencil" title="<?=gettext('Edit')?>" href="/certdeploy/certdeploy_target_edit.php?id=<?=$id?>"></a>
+					<a class="fa-solid fa-trash-can" title="<?=gettext('Delete')?>" href="?act=delete&amp;id=<?=$id?>" usepost></a>
+					<a class="fa-solid fa-copy" title="<?=gettext('Copy')?>" href="/certdeploy/certdeploy_target_edit.php?dup=<?=$id?>"></a>
 					</td>
 				</tr>
 <?php
@@ -125,7 +199,7 @@ else:
 ?>
 				<tr>
 					<td colspan="7">
-						<?php print_info_box(gettext('No deployments configured. Add a deployment to push certificates to a remote host.'), 'warning'); ?>
+						<?php print_info_box(gettext('No targets configured. Add a target to push certificates to a remote host.'), 'warning'); ?>
 					</td>
 				</tr>
 <?php endif; ?>
@@ -135,9 +209,9 @@ else:
 </div>
 
 <nav class="action-buttons">
-	<a href="/certdeploy/certdeploy_deployment_edit.php" class="btn btn-success btn-sm">
+	<a href="/certdeploy/certdeploy_target_edit.php" class="btn btn-success btn-sm">
 		<i class="fa-solid fa-plus icon-embed-btn"></i>
-		<?=gettext('Add Deployment')?>
+		<?=gettext('Add Target')?>
 	</a>
 </nav>
 

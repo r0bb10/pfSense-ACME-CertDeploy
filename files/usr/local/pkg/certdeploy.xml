@@ -28,10 +28,6 @@
 			<active/>
 		</tab>
 		<tab>
-			<text>Identities</text>
-			<url>/certdeploy/certdeploy_identities.php</url>
-		</tab>
-		<tab>
 			<text>Deployments</text>
 			<url>/certdeploy/certdeploy_deployments.php</url>
 		</tab>

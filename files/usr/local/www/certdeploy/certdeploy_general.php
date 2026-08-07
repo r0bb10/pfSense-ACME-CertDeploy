@@ -38,7 +38,6 @@ if (!empty($input_errors)) {
 
 $tab_array = [
 	[gettext('General'), true, '/certdeploy/certdeploy_general.php'],
-	[gettext('Identities'), false, '/certdeploy/certdeploy_identities.php'],
 	[gettext('Deployments'), false, '/certdeploy/certdeploy_deployments.php'],
 	[gettext('Log'), false, '/certdeploy/certdeploy_log.php'],
 ];
