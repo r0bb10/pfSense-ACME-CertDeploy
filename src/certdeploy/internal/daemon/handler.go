@@ -13,9 +13,9 @@ import (
 //
 //	2026-08-07 16:12:33  INFO  certdeployd starting version=0.1.2 component=daemon
 //
-// Severity and msg are emitted bare; attributes follow as trailing key=value
-// pairs. The time field for the file is written once by the handler, so the
-// default slog `time`/`level`/`msg` keys are never repeated.
+// Severity and msg are emitted bare; level is right-padded so the message column
+// stays aligned across levels. Time/level/msg are written once by the handler, so
+// the default slog `time`/`level`/`msg` keys are never repeated.
 type logHandler struct {
 	mu    *sync.Mutex
 	w     io.Writer
@@ -37,7 +37,7 @@ func (h *logHandler) Handle(_ context.Context, r slog.Record) error {
 	var b strings.Builder
 	b.WriteString(r.Time.Format("2006-01-02 15:04:05"))
 	b.WriteString("  ")
-	b.WriteString(strings.ToUpper(r.Level.String()))
+	_, _ = fmt.Fprintf(&b, "%-5s", strings.ToUpper(r.Level.String()))
 	b.WriteString("  ")
 	b.WriteString(r.Message)
 

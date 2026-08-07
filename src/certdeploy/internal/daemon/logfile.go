@@ -10,11 +10,10 @@ import (
 // on demand (used to reopen the log after newsyslog(8) rotates it). All
 // writes and reopens are serialized through an internal mutex.
 type logFile struct {
-	mu     sync.Mutex
-	path   string
-	mode   os.FileMode
-	closed bool
-	f      *os.File
+	mu   sync.Mutex
+	path string
+	mode os.FileMode
+	f    *os.File
 }
 
 // newLogFile opens (creating if necessary) the log file at path in append

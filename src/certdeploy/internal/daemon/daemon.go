@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"os"
@@ -63,8 +62,8 @@ func New(cfg *config.Config, version string) (*Daemon, error) {
 	}
 
 	stateMgr := state.NewManager(cfg.StateFile)
-	runner := ssh.NewRunner(cfg, lg)
-	engine := deploy.NewEngine(cfg, lg, stateMgr, runner)
+	runner := ssh.NewRunner(cfg, lg.With("component", "ssh"))
+	engine := deploy.NewEngine(cfg, lg.With("component", "deploy"), stateMgr, runner)
 
 	maxConcurrent := cfg.MaxConcurrentTargets
 	if maxConcurrent < 1 {
@@ -73,7 +72,7 @@ func New(cfg *config.Config, version string) (*Daemon, error) {
 
 	d := &Daemon{
 		cfg:     cfg,
-		logger:  lg,
+		logger:  lg.With("component", "daemon"),
 		logFile: lf,
 		version: version,
 		state:   stateMgr,
@@ -92,11 +91,11 @@ func New(cfg *config.Config, version string) (*Daemon, error) {
 
 func (d *Daemon) Run() error {
 	if !d.cfg.Enable {
-		log.Println("certdeploy is disabled in configuration")
+		d.logger.Info("certdeploy is disabled in configuration")
 		return nil
 	}
 
-	d.logger.Info("certdeployd starting", slog.String("component", "daemon"), slog.String("version", d.version))
+	d.logger.Info("certdeployd starting", slog.String("version", d.version))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -108,11 +107,11 @@ func (d *Daemon) Run() error {
 	}
 	defer func() {
 		if err := ln.Close(); err != nil {
-			d.logger.Error("failed to close listener", slog.String("component", "daemon"), slog.Any("error", err))
+			d.logger.Error("failed to close listener", slog.Any("error", err))
 		}
 	}()
 	if err := os.Chmod(d.socket, 0600); err != nil {
-		d.logger.Error("failed to chmod socket", slog.String("component", "daemon"), slog.Any("error", err))
+		d.logger.Error("failed to chmod socket", slog.Any("error", err))
 	}
 
 	go d.acceptLoop(ctx, ln)
@@ -132,9 +131,9 @@ func (d *Daemon) Run() error {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 	for sig := range sigCh {
 		if sig == syscall.SIGUSR1 {
-			d.logger.Info("log rotation requested", slog.String("component", "daemon"))
+			d.logger.Debug("log rotation requested")
 			if err := d.logFile.Reopen(); err != nil {
-				d.logger.Error("failed to reopen log", slog.String("component", "daemon"), slog.Any("error", err))
+				d.logger.Error("failed to reopen log", slog.Any("error", err))
 			}
 			continue
 		}
@@ -142,7 +141,7 @@ func (d *Daemon) Run() error {
 	}
 
 	cancel()
-	d.logger.Info("shutting down", slog.String("component", "daemon"))
+	d.logger.Info("shutting down")
 	return d.logFile.Close()
 }
 
@@ -152,18 +151,23 @@ func (d *Daemon) runDeployment(id string) {
 
 	dep, err := pfsense.LoadDeployment(d.cfg.ConfigPath, id)
 	if err != nil {
-		d.logger.Error("failed to load deployment", slog.String("component", "daemon"), slog.String("deployment", id), slog.Any("error", err))
+		d.logger.Error("failed to load deployment",
+			slog.String("deployment", id), slog.Any("error", err))
 		return
 	}
+
+	log := d.logger.With(slog.String("deployment", id), slog.String("name", dep.Name))
 
 	result := d.engine.Run(context.Background(), dep)
 	if result.Error != nil {
-		d.logger.Error("deployment failed", slog.String("component", "daemon"), slog.String("deployment", id), slog.Any("error", result.Error))
+		log.Error("deployment failed", slog.Any("error", result.Error))
 		return
 	}
+	d.logger.Debug("deployment succeeded", slog.String("deployment", id), slog.String("name", dep.Name))
 
 	if result.HostKeyFingerprint != "" && result.HostKeyFingerprint != dep.HostKeyFingerprint {
-		d.logger.Info("recorded host key fingerprint", slog.String("component", "daemon"), slog.String("deployment", id), slog.String("fingerprint", result.HostKeyFingerprint))
+		log.Info("host key fingerprint changed",
+			slog.String("fingerprint", result.HostKeyFingerprint))
 	}
 }
 
@@ -174,7 +178,7 @@ func (d *Daemon) acceptLoop(ctx context.Context, ln net.Listener) {
 			if ctx.Err() != nil {
 				return
 			}
-			d.logger.Error("accept error", slog.String("component", "daemon"), slog.Any("error", err))
+			d.logger.Error("accept error", slog.Any("error", err))
 			continue
 		}
 		go d.handleConn(ctx, conn)
@@ -184,7 +188,7 @@ func (d *Daemon) acceptLoop(ctx context.Context, ln net.Listener) {
 func (d *Daemon) handleConn(ctx context.Context, conn net.Conn) {
 	defer func() {
 		if err := conn.Close(); err != nil {
-			d.logger.Error("failed to close connection", slog.String("component", "daemon"), slog.Any("error", err))
+			d.logger.Error("failed to close connection", slog.Any("error", err))
 		}
 	}()
 	dec := json.NewDecoder(conn)
@@ -254,38 +258,38 @@ func (d *Daemon) reconcileLoop(ctx context.Context) {
 
 // scanACME discovers ACME certs, compares fingerprints, and queues auto-deploy runs.
 func (d *Daemon) scanACME() {
-	d.logger.Info("scanning ACME state", slog.String("component", "daemon"))
+	d.logger.Debug("scanning ACME state")
 	if err := d.state.UpdateLastScanTime(time.Now().Unix()); err != nil {
-		d.logger.Error("failed to update last scan time", slog.String("component", "daemon"), slog.Any("error", err))
+		d.logger.Error("failed to update last scan time", slog.Any("error", err))
 	}
 
 	ids, err := d.outdatedDeploymentIDs(false)
 	if err != nil {
-		d.logger.Error("ACME scan failed", slog.String("component", "daemon"), slog.Any("error", err))
+		d.logger.Error("ACME scan failed", slog.Any("error", err))
 		return
 	}
 
 	for _, id := range ids {
-		d.logger.Info("auto-deploying outdated deployment", slog.String("component", "daemon"), slog.String("deployment", id))
+		d.logger.Info("auto-deploying outdated deployment", slog.String("deployment", id))
 		go d.runDeployment(id)
 	}
 }
 
 // reconcile deploys all outdated certificates regardless of auto_deploy.
 func (d *Daemon) reconcile() {
-	d.logger.Info("running reconciliation", slog.String("component", "daemon"))
+	d.logger.Debug("running reconciliation")
 	if err := d.state.UpdateLastReconcileTime(time.Now().Unix()); err != nil {
-		d.logger.Error("failed to update last reconcile time", slog.String("component", "daemon"), slog.Any("error", err))
+		d.logger.Error("failed to update last reconcile time", slog.Any("error", err))
 	}
 
 	ids, err := d.outdatedDeploymentIDs(true)
 	if err != nil {
-		d.logger.Error("reconciliation failed", slog.String("component", "daemon"), slog.Any("error", err))
+		d.logger.Error("reconciliation failed", slog.Any("error", err))
 		return
 	}
 
 	for _, id := range ids {
-		d.logger.Info("reconciling outdated deployment", slog.String("component", "daemon"), slog.String("deployment", id))
+		d.logger.Info("reconciling outdated deployment", slog.String("deployment", id))
 		go d.runDeployment(id)
 	}
 }
@@ -332,7 +336,6 @@ func (d *Daemon) outdatedDeploymentIDs(reconcile bool) ([]string, error) {
 		currentFP, ok := fpByName[dep.CertificateName]
 		if !ok {
 			d.logger.Warn("deployment references unknown ACME certificate",
-				slog.String("component", "daemon"),
 				slog.String("deployment", dep.ID),
 				slog.String("certificate", dep.CertificateName))
 			continue

@@ -74,9 +74,7 @@ func (r *Runner) execSCP(ctx context.Context, opts Options, src, dst string) err
 	cmd.WaitDelay = 30 * time.Second
 	out, err := cmd.CombinedOutput()
 	if err != nil && opts.LegacySCPFallback {
-		r.logger.Info("SCP failed, retrying with legacy scp -O",
-			slog.String("component", "ssh"),
-			slog.String("output", strings.TrimSpace(string(out))))
+		r.logger.Warn("SCP failed, retrying with legacy scp -O")
 		args = append([]string{"-O"}, args...)
 		cmd = exec.CommandContext(ctx, "scp", args...)
 		cmd.Env = os.Environ()
@@ -185,7 +183,7 @@ func (r *Runner) StartControlMaster(ctx context.Context, opts Options) (string, 
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 		return "", nil, fmt.Errorf("failed to start SSH control master: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 
@@ -271,17 +269,7 @@ func (r *Runner) PrepareKnownHosts(opts Options, keyLine string) (string, func()
 	return f.Name(), cleanup, nil
 }
 
-// baseArgsWithHostKey returns base args plus the known_hosts file and strict checking.
-func (r *Runner) baseArgsWithHostKey(opts Options, knownHostsFile string) []string {
-	args := r.baseArgs(opts)
-	args = append(args,
-		"-o", "StrictHostKeyChecking=yes",
-		"-o", "UserKnownHostsFile="+knownHostsFile,
-		"-o", "HostKeyAlgorithms="+hostKeyAlgorithms(),
-	)
-	return args
-}
-
+// hostKeyAlgorithms returns the supported host key algorithms in preference order.
 func hostKeyAlgorithms() string {
 	return "ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ssh-rsa,rsa-sha2-256,rsa-sha2-512"
 }
@@ -303,7 +291,7 @@ func (r *Runner) scanHostKeys(ctx context.Context, host string, port int) ([]Hos
 		}
 		fp, err := fingerprintFromKeyLine(line)
 		if err != nil {
-			r.logger.Debug("skipping host key line", slog.String("component", "ssh"), slog.Any("error", err))
+			r.logger.Debug("skipping host key line", slog.Any("error", err))
 			continue
 		}
 		algo := keyAlgorithmFromLine(line)
