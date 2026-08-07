@@ -31,7 +31,6 @@ type certDeployXML struct {
 type identityXML struct {
 	ID             string `xml:"id"`
 	Name           string `xml:"name"`
-	Enabled        string `xml:"enabled"`
 	PrivateKeyPath string `xml:"private_key_path"`
 }
 

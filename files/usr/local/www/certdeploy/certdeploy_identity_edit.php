@@ -84,7 +84,6 @@ if ($_POST) {
 			$ident = [
 				'id' => $ident_id,
 				'name' => $name,
-				'enabled' => empty($_POST['enabled']) ? 'off' : 'on',
 				'description' => $_POST['description'] ?? '',
 				'key_type' => $key_type,
 				'private_key_path' => $private_key_path,
@@ -136,13 +135,6 @@ display_top_tabs($tab_array);
 $form = new Form(false);
 
 $section = new Form_Section(gettext('Identity'));
-
-$section->addInput(new Form_Checkbox(
-	'enabled',
-	gettext('Enable'),
-	gettext('Enable this identity'),
-	($pconfig['enabled'] ?? '') === 'on'
-));
 
 $section->addInput(new Form_Input(
 	'name',

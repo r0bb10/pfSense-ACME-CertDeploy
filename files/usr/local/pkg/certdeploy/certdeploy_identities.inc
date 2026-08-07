@@ -19,9 +19,6 @@ function certdeploy_identity_options() {
 		if (!empty($ident['description'])) {
 			$label .= ' - ' . $ident['description'];
 		}
-		if (($ident['enabled'] ?? '') !== 'on') {
-			$label .= ' [disabled]';
-		}
 		$opts[$id] = $label;
 	}
 	return $opts;

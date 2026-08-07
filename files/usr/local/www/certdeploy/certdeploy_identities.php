@@ -20,12 +20,8 @@ if ($_POST && isset($_POST['act'], $_POST['id'])) {
 				}
 				config_del_path("installedpackages/certdeploy/identities/item/{$idx}");
 				write_config('CertDeploy identity deleted');
-			} elseif ($_POST['act'] === 'toggle') {
-				$ident['enabled'] = (($ident['enabled'] ?? '') === 'on') ? 'off' : 'on';
-				config_set_path("installedpackages/certdeploy/identities/item/{$idx}", $ident);
-				write_config('CertDeploy identity toggled');
+				certdeploy_sync();
 			}
-			certdeploy_sync();
 			break;
 		}
 	}
@@ -54,7 +50,6 @@ display_top_tabs($tab_array);
 		<table class="table table-hover table-striped table-condensed">
 			<thead>
 				<tr>
-					<th><?=gettext('Enabled')?></th>
 					<th><?=gettext('Name')?></th>
 					<th><?=gettext('Type')?></th>
 					<th><?=gettext('Fingerprint')?></th>
@@ -67,14 +62,8 @@ $identities = certdeploy_identities();
 if (count($identities) > 0):
 	foreach ($identities as $idx => $ident):
 		$id = htmlspecialchars($ident['id'] ?? '');
-		$enabled = ($ident['enabled'] ?? '') === 'on';
 ?>
-                <tr <?=$enabled ? '' : 'class="disabled"'?>>
-					<td>
-						<a href="?act=toggle&amp;id=<?=$id?>" usepost>
-							<i class="fa-solid fa-check" title="<?=gettext('click to toggle enabled/disabled status')?>"></i>
-						</a>
-					</td>
+				<tr>
 					<td><?=htmlspecialchars($ident['name'] ?? '')?></td>
 					<td><?=htmlspecialchars($ident['key_type'] ?? '')?></td>
 					<td><?=htmlspecialchars($ident['fingerprint'] ?? '')?></td>
@@ -93,7 +82,7 @@ if (count($identities) > 0):
 else:
 ?>
 				<tr>
-					<td colspan="5">
+					<td colspan="4">
 						<?php print_info_box(gettext('No identities configured. Add an identity to use for SSH authentication.'), 'warning'); ?>
 					</td>
 				</tr>
