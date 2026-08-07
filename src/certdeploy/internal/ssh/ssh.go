@@ -74,7 +74,7 @@ func (r *Runner) execSCP(ctx context.Context, opts Options, src, dst string) err
 	cmd.WaitDelay = 30 * time.Second
 	out, err := cmd.CombinedOutput()
 	if err != nil && opts.LegacySCPFallback {
-		r.logger.Warn("SCP failed, retrying with legacy scp -O")
+		r.logger.Debug("SCP failed, retrying with legacy scp -O")
 		args = append([]string{"-O"}, args...)
 		cmd = exec.CommandContext(ctx, "scp", args...)
 		cmd.Env = os.Environ()

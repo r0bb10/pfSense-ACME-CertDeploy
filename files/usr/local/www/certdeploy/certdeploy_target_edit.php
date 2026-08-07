@@ -31,7 +31,7 @@ if ($id !== '') {
 		}
 	}
 	// Clear identity and runtime state so the copy is saved as a new deployment.
-	unset($pconfig['id'], $pconfig['last_deployed_fingerprint'], $pconfig['last_deployed_time'], $pconfig['last_run_status']);
+	unset($pconfig['id'], $pconfig['host_key_fingerprint'], $pconfig['last_deployed_fingerprint'], $pconfig['last_deployed_time'], $pconfig['last_run_status']);
 }
 
 if ($_POST) {
