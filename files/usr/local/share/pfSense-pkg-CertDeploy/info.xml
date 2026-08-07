@@ -4,7 +4,7 @@
 		<name>CertDeploy</name>
 		<internal_name>certdeploy</internal_name>
 		<descr><![CDATA[Deploy ACME certificates to remote hosts over SSH.]]></descr>
-		<pkginfolink>https://github.com/r0bb10/pfSense-CertDeploy</pkginfolink>
+		<pkginfolink>https://github.com/r0bb10/pfSense-ACME-CertDeploy</pkginfolink>
 		<version>%%PKGVERSION%%</version>
 		<configurationfile>certdeploy.xml</configurationfile>
 	</package>

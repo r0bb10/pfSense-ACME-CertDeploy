@@ -3,7 +3,7 @@
 set -eu
 
 PORTNAME="pfSense-pkg-CertDeploy"
-PORTVERSION="${PORTVERSION:-0.0.0}"
+PORTVERSION="${PORTVERSION:-dev}"
 ABI="FreeBSD:15:amd64"
 PREFIX="/usr/local"
 ROOT=$(cd -- "$(dirname -- "$0")" && pwd)
@@ -36,9 +36,11 @@ build_go() {
 		(
 			cd "${SRC}"
 			GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build \
+				-buildvcs=false \
 				-ldflags="-s -w -X main.version=${PORTVERSION}" \
 				-o "${DIST}/certdeployd" ./cmd/certdeployd
 			GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build \
+				-buildvcs=false \
 				-ldflags="-s -w -X main.version=${PORTVERSION}" \
 				-o "${DIST}/certdeployctl" ./cmd/certdeployctl
 		)
@@ -76,7 +78,7 @@ stage() {
 
 	for file in "${FILES}${PREFIX}/www/certdeploy/"*.php; do
 		if [ -f "${file}" ]; then
-			rel="${file#${FILES}${PREFIX}/}"
+			rel="${file#"${FILES}""${PREFIX}"/}"
 			mkdir -p "${STAGE}${PREFIX}/$(dirname "${rel}")"
 			install -m 0644 "${file}" "${STAGE}${PREFIX}/${rel}"
 		fi
@@ -104,7 +106,7 @@ maintainer: "noreply@github.com"
 prefix: "${PREFIX}"
 abi: "${ABI}"
 desc: "Native pfSense package that deploys ACME certificates to remote hosts over SSH."
-www: "https://github.com/r0bb10/pfSense-CertDeploy"
+www: "https://github.com/r0bb10/pfSense-ACME-CertDeploy"
 licenselogic: "single"
 licenses: ["APACHE20"]
 categories: ["security"]

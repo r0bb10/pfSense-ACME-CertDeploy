@@ -26,7 +26,7 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	d, err := daemon.New(cfg)
+	d, err := daemon.New(cfg, version)
 	if err != nil {
 		log.Fatalf("failed to create daemon: %v", err)
 	}

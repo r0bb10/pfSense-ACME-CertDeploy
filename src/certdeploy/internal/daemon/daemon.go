@@ -26,6 +26,7 @@ type Daemon struct {
 	cfg     *config.Config
 	logger  *slog.Logger
 	logFile *os.File
+	version string
 	state   *state.Manager
 	ssh     *ssh.Runner
 	engine  *deploy.Engine
@@ -59,7 +60,7 @@ func newLogger(path, level string) (*slog.Logger, *os.File, error) {
 	return slog.New(handler), f, nil
 }
 
-func New(cfg *config.Config) (*Daemon, error) {
+func New(cfg *config.Config, version string) (*Daemon, error) {
 	lg, lf, err := newLogger(cfg.LogFile, cfg.LogLevel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logger: %w", err)
@@ -78,6 +79,7 @@ func New(cfg *config.Config) (*Daemon, error) {
 		cfg:     cfg,
 		logger:  lg,
 		logFile: lf,
+		version: version,
 		state:   stateMgr,
 		ssh:     runner,
 		engine:  engine,
@@ -98,7 +100,7 @@ func (d *Daemon) Run() error {
 		return nil
 	}
 
-	d.logger.Info("certdeployd starting", slog.String("component", "daemon"), slog.String("version", "dev"))
+	d.logger.Info("certdeployd starting", slog.String("component", "daemon"), slog.String("version", d.version))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

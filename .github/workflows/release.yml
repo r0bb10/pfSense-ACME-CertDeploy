@@ -1,0 +1,149 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release (e.g. 0.0.1). Leave empty to use the current tag.
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Shell lint
+        run: shellcheck build.sh files/pkg-install.in files/pkg-deinstall.in files/pkg-post-deinstall.in files/usr/local/etc/rc.d/certdeploy
+      - name: PHP lint
+        run: find files -type f \( -name '*.php' -o -name '*.inc' \) -print0 | xargs -0 -n1 php -l
+      - name: XML parse
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+          for path in pathlib.Path('files').rglob('*.xml'):
+              ET.parse(path)
+              print(path)
+          PY
+      - name: Go format check
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: src/certdeploy/go.mod
+      - name: Go mod tidy check
+        working-directory: src/certdeploy
+        run: go mod tidy -diff
+      - name: Go vet
+        working-directory: src/certdeploy
+        run: go vet ./...
+      - name: Go test
+        working-directory: src/certdeploy
+        run: go test ./...
+
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      release_exists: ${{ steps.check.outputs.exists }}
+    steps:
+      - name: Resolve version
+        id: resolve
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          if [ -n "${VERSION_INPUT}" ]; then
+            version="${VERSION_INPUT}"
+          else
+            version="${TAG#v}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Check existing release
+        id: check
+        env:
+          RELEASE_TAG: pfsense-${{ steps.resolve.outputs.version }}
+        uses: actions/github-script@v9.0.0
+        with:
+          script: |
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: process.env.RELEASE_TAG
+              });
+              core.setOutput('exists', 'true');
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              core.setOutput('exists', 'false');
+            }
+
+  build:
+    if: needs.prepare.outputs.release_exists == 'false' || github.event_name == 'workflow_dispatch'
+    needs: [prepare, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Build package on FreeBSD 15
+        uses: vmactions/freebsd-vm@v1.5.3
+        env:
+          PORTVERSION: ${{ needs.prepare.outputs.version }}
+        with:
+          release: '15.0'
+          usesh: true
+          mem: 4096
+          envs: PORTVERSION
+          prepare: |
+            export ASSUME_ALWAYS_YES=yes
+            pkg bootstrap -f
+            pkg update -f
+            pkg install -f -y git go
+          run: |
+            set -eux
+            chmod +x build.sh
+            ./build.sh package
+            version="${PORTVERSION}"
+            cp build/pkg/*.pkg ./pfSense-pkg-CertDeploy-${version}.pkg
+      - name: Generate checksums
+        run: sha256sum pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg > SHA256SUMS
+      - name: Attest package
+        uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}
+          path: |
+            pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg
+            SHA256SUMS
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v3.0.2
+        with:
+          tag_name: pfsense-${{ needs.prepare.outputs.version }}
+          name: pfSense CertDeploy ${{ needs.prepare.outputs.version }}
+          body: |
+            pfSense package for CertDeploy ``${{ needs.prepare.outputs.version }}`` built for FreeBSD 15 amd64.
+
+            ## Install
+
+            ```
+            curl -fSL -o /tmp/pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg \
+              "https://github.com/r0bb10/pfSense-ACME-CertDeploy/releases/download/pfsense-${{ needs.prepare.outputs.version }}/pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg"
+
+            /usr/local/sbin/pkg-static add -f /tmp/pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg
+            ```
+          overwrite_files: true
+          files: |
+            pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg
+            SHA256SUMS
