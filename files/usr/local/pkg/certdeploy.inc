@@ -49,9 +49,34 @@ function certdeploy_write_rc_conf() {
 	file_put_contents(CERTDEPLOY_RCCONF, $rcconf, LOCK_EX);
 }
 
+function certdeploy_write_newsyslog_conf() {
+	global $g;
+
+	$confdir = $g['varetc_path'] . '/newsyslog.conf.d';
+	if (!is_dir($confdir)) {
+		mkdir($confdir, 0755, true);
+	}
+
+	$line = system_log_rotation_make_line(
+		CERTDEPLOY_LOG_FILE,
+		'root:wheel',
+		600,
+		5,
+		1000,
+		'$W0D16',
+		'B',
+		'/var/run/certdeploy/certdeploy.pid',
+		'SIGUSR1'
+	);
+
+	$conf = "# Automatically generated for CertDeploy. Do not edit.\n" . $line;
+	@file_put_contents("{$confdir}/certdeploy.log.conf", $conf, LOCK_EX);
+}
+
 function certdeploy_install() {
 	certdeploy_ensure_directories();
 	certdeploy_write_rc_conf();
+	certdeploy_write_newsyslog_conf();
 
 	$services = config_get_path('installedpackages/service', []);
 	foreach ($services as $idx => $svc) {
@@ -73,6 +98,7 @@ function certdeploy_deinstall() {
 function certdeploy_sync() {
 	certdeploy_ensure_directories();
 	certdeploy_write_rc_conf();
+	certdeploy_write_newsyslog_conf();
 	certdeploy_write_daemon_config();
 
 	if (certdeploy_enabled()) {

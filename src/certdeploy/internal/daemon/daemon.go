@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -25,7 +24,7 @@ import (
 type Daemon struct {
 	cfg     *config.Config
 	logger  *slog.Logger
-	logFile *os.File
+	logFile *logFile
 	version string
 	state   *state.Manager
 	ssh     *ssh.Runner
@@ -48,16 +47,13 @@ func parseLogLevel(level string) slog.Level {
 	}
 }
 
-func newLogger(path, level string) (*slog.Logger, *os.File, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
-		return nil, nil, err
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0640)
+func newLogger(path, level string) (*slog.Logger, *logFile, error) {
+	l, err := openLogFile(path, 0640)
 	if err != nil {
 		return nil, nil, err
 	}
-	handler := NewLogHandler(f, parseLogLevel(level))
-	return slog.New(handler), f, nil
+	handler := NewLogHandler(l, parseLogLevel(level))
+	return slog.New(handler), l, nil
 }
 
 func New(cfg *config.Config, version string) (*Daemon, error) {
@@ -133,8 +129,17 @@ func (d *Daemon) Run() error {
 
 	// Wait for shutdown signal.
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	for sig := range sigCh {
+		if sig == syscall.SIGUSR1 {
+			d.logger.Info("log rotation requested", slog.String("component", "daemon"))
+			if err := d.logFile.Reopen(); err != nil {
+				d.logger.Error("failed to reopen log", slog.String("component", "daemon"), slog.Any("error", err))
+			}
+			continue
+		}
+		break
+	}
 
 	cancel()
 	d.logger.Info("shutting down", slog.String("component", "daemon"))
