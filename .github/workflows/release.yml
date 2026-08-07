@@ -42,6 +42,7 @@ jobs:
         uses: actions/setup-go@v7.0.0
         with:
           go-version-file: src/certdeploy/go.mod
+          cache-dependency-path: src/certdeploy/go.sum
       - name: Go mod tidy check
         working-directory: src/certdeploy
         run: go mod tidy -diff
