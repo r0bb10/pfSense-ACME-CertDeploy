@@ -44,27 +44,28 @@ type Destination struct {
 
 // Deployment mirrors the config.xml deployment item.
 type Deployment struct {
-	ID                   string
-	Name                 string
-	Enabled              bool
-	CertificateName      string
-	CertificateBase      string // /conf/acme/<descr>
-	Host                 string
-	Port                 int
-	User                 string
-	IdentityPath         string
-	HostKeyFingerprint   string
-	HostKeyIgnoreChanges bool
-	Timeout              int
-	CMDTimeout           int
-	UseSFTP              bool
-	LegacySCPFallback    bool
-	ExtraSSHOpts         string
-	Artifacts            []Artifact
-	Destination          Destination
-	PostUploadCmd        string
-	ValidationCmd        string
-	ReloadCmd            string
+	ID                     string
+	Name                   string
+	Enabled                bool
+	CertificateName        string
+	CertificateBase        string // /conf/acme/<descr>
+	Host                   string
+	Port                   int
+	User                   string
+	IdentityPath           string
+	HostKeyFingerprint     string
+	HostKeyIgnoreChanges   bool
+	Timeout                int
+	CMDTimeout             int
+	UseSFTP                bool
+	LegacySCPFallback      bool
+	DisableConnectionReuse bool
+	ExtraSSHOpts           string
+	Artifacts              []Artifact
+	Destination            Destination
+	PostUploadCmd          string
+	ValidationCmd          string
+	ReloadCmd              string
 }
 
 // RunResult contains the outcome of a deployment run.
@@ -111,6 +112,18 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 	result.HostKeyFingerprint = fingerprint
 	opts.KnownHostsFile = khFile
 	opts.HostKeyAlgorithm = algorithm
+
+	if !d.DisableConnectionReuse {
+		socket, cleanupMaster, err := e.ssh.StartControlMaster(ctx, opts)
+		if err != nil {
+			result.Error = err
+			e.record(d.ID, "failed", result.HostKeyFingerprint, err)
+			return result
+		}
+		defer cleanupMaster()
+		opts.ControlSocket = socket
+		e.logger.Info("using multiplexed SSH connection", slog.String("component", "deploy"), slog.String("deployment", d.ID))
+	}
 
 	dest := d.Destination
 	hasFiles := dest.Directory != "" && len(d.Artifacts) > 0

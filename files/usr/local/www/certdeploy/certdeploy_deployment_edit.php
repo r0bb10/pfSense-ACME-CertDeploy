@@ -314,16 +314,16 @@ $section->addInput(new Form_Input(
 	gettext('Connect Timeout'),
 	'number',
 	$pconfig['connect_timeout'] ?? '',
-	['min' => 1]
-))->setHelp(gettext('Override default SSH connect timeout. Leave blank to use default.'));
+	['min' => 0]
+))->setHelp(gettext('Override default SSH connect timeout. Leave blank or set to 0 to use default.'));
 
 $section->addInput(new Form_Input(
 	'cmd_timeout',
 	gettext('Command Timeout'),
 	'number',
 	$pconfig['cmd_timeout'] ?? '',
-	['min' => 1]
-))->setHelp(gettext('Override default command timeout. Leave blank to use default.'));
+	['min' => 0]
+))->setHelp(gettext('Override default command timeout. Leave blank or set to 0 to use default.'));
 
 $section->addInput(new Form_Checkbox(
 	'use_sftp',
@@ -337,6 +337,13 @@ $section->addInput(new Form_Checkbox(
 	gettext('Legacy SCP'),
 	gettext('Fallback to legacy scp -O if SFTP fails'),
 	($pconfig['legacy_scp_fallback'] ?? '') === 'on'
+));
+
+$section->addInput(new Form_Checkbox(
+	'disable_connection_reuse',
+	gettext('Disable Connection Reuse'),
+	gettext('Use a separate SSH connection for every file and command'),
+	($pconfig['disable_connection_reuse'] ?? '') === 'on'
 ));
 
 $section->addInput(new Form_Checkbox(

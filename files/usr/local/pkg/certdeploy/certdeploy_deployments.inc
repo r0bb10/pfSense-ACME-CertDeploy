@@ -129,6 +129,7 @@ function certdeploy_deployment_build($post, $old = []) {
 	$dep['cmd_timeout'] = is_numericint($post['cmd_timeout'] ?? '') ? (int)$post['cmd_timeout'] : 0;
 	$dep['use_sftp'] = empty($post['use_sftp']) ? 'off' : 'on';
 	$dep['legacy_scp_fallback'] = empty($post['legacy_scp_fallback']) ? 'off' : 'on';
+	$dep['disable_connection_reuse'] = empty($post['disable_connection_reuse']) ? 'off' : 'on';
 	$dep['ssh_opts'] = $post['ssh_opts'] ?? '';
 	$dep['auto_deploy'] = empty($post['auto_deploy']) ? 'off' : 'on';
 	$dep['readiness_check'] = empty($post['readiness_check']) ? 'off' : 'on';

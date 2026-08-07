@@ -41,6 +41,9 @@ type Options struct {
 	ExtraSSHOpts         string
 	UseSFTP              bool
 	LegacySCPFallback    bool
+	// ControlSocket is the path to an OpenSSH control socket for connection
+	// multiplexing. When set, ssh/scp invocations reuse that master connection.
+	ControlSocket string
 }
 
 // HostKeyResult holds a scanned host key and its SHA256 fingerprint.
@@ -112,6 +115,12 @@ func (r *Runner) baseArgs(opts Options) []string {
 			args = append(args, "-o", "HostKeyAlgorithms="+allowedAlgorithms(opts.HostKeyAlgorithm))
 		}
 	}
+	if opts.ControlSocket != "" {
+		args = append(args,
+			"-o", "ControlPath="+opts.ControlSocket,
+			"-o", "ControlMaster=no",
+		)
+	}
 	args = append(args, strings.Fields(opts.ExtraSSHOpts)...)
 	return args
 }
@@ -135,16 +144,56 @@ func allowedAlgorithms(algorithm string) string {
 
 // RunCommand executes a remote command and returns its output.
 func (r *Runner) RunCommand(ctx context.Context, opts Options, cmd string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(opts.CMDTimeout)*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.cmdTimeout(opts)*time.Second)
 	defer cancel()
 	return r.execSSH(ctx, opts, cmd)
 }
 
 // CopyFile copies a local file to a remote path.
 func (r *Runner) CopyFile(ctx context.Context, opts Options, src, dst string) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(opts.CMDTimeout)*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.cmdTimeout(opts)*time.Second)
 	defer cancel()
 	return r.execSCP(ctx, opts, src, dst)
+}
+
+func (r *Runner) cmdTimeout(opts Options) time.Duration {
+	if opts.CMDTimeout > 0 {
+		return time.Duration(opts.CMDTimeout)
+	}
+	return time.Duration(r.cfg.DefaultCMDTimeout)
+}
+
+// StartControlMaster opens a persistent OpenSSH control connection for
+// multiplexing. It returns the control socket path and a cleanup function that
+// must be called to close the master connection and remove the temp directory.
+func (r *Runner) StartControlMaster(ctx context.Context, opts Options) (string, func(), error) {
+	dir, err := os.MkdirTemp("", "certdeploy-ssh-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create control socket directory: %w", err)
+	}
+	socket := filepath.Join(dir, "control.sock")
+
+	args := r.baseArgs(opts)
+	args = append(args,
+		"-f", "-N", "-M",
+		"-o", "ControlPath="+socket,
+		"-o", "ControlPersist=yes",
+		fmt.Sprintf("%s@%s", opts.User, opts.Host),
+	)
+
+	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd.Env = os.Environ()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		os.RemoveAll(dir)
+		return "", nil, fmt.Errorf("failed to start SSH control master: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	cleanup := func() {
+		_ = exec.Command("ssh", "-S", socket, "-O", "exit", fmt.Sprintf("%s@%s", opts.User, opts.Host)).Run()
+		_ = os.RemoveAll(dir)
+	}
+	return socket, cleanup, nil
 }
 
 // ScanAndVerifyHostKey scans the target host key, verifies it against the

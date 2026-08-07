@@ -36,26 +36,27 @@ type identityXML struct {
 }
 
 type deploymentXML struct {
-	ID                   string         `xml:"id"`
-	Name                 string         `xml:"name"`
-	Enabled              string         `xml:"enabled"`
-	Description          string         `xml:"description"`
-	CertificateName      string         `xml:"certificate_name"`
-	Host                 string         `xml:"host"`
-	Port                 int            `xml:"port"`
-	IdentityID           string         `xml:"identity_id"`
-	HostKeyFingerprint   string         `xml:"host_key_fingerprint"`
-	HostKeyIgnoreChanges string         `xml:"host_key_ignore_changes"`
-	ConnectTimeout       int            `xml:"connect_timeout"`
-	CMDTimeout           int            `xml:"cmd_timeout"`
-	UseSFTP              string         `xml:"use_sftp"`
-	LegacySCPFallback    string         `xml:"legacy_scp_fallback"`
-	SSHOpts              string         `xml:"ssh_opts"`
-	Artifacts            artifactsXML   `xml:"artifacts"`
-	Destination          destinationXML `xml:"destination"`
-	PostUploadCmd        string         `xml:"post_upload_cmd"`
-	ValidationCmd        string         `xml:"validation_cmd"`
-	ReloadCmd            string         `xml:"reload_cmd"`
+	ID                     string         `xml:"id"`
+	Name                   string         `xml:"name"`
+	Enabled                string         `xml:"enabled"`
+	Description            string         `xml:"description"`
+	CertificateName        string         `xml:"certificate_name"`
+	Host                   string         `xml:"host"`
+	Port                   int            `xml:"port"`
+	IdentityID             string         `xml:"identity_id"`
+	HostKeyFingerprint     string         `xml:"host_key_fingerprint"`
+	HostKeyIgnoreChanges   string         `xml:"host_key_ignore_changes"`
+	ConnectTimeout         int            `xml:"connect_timeout"`
+	CMDTimeout             int            `xml:"cmd_timeout"`
+	UseSFTP                string         `xml:"use_sftp"`
+	LegacySCPFallback      string         `xml:"legacy_scp_fallback"`
+	DisableConnectionReuse string         `xml:"disable_connection_reuse"`
+	SSHOpts                string         `xml:"ssh_opts"`
+	Artifacts              artifactsXML   `xml:"artifacts"`
+	Destination            destinationXML `xml:"destination"`
+	PostUploadCmd          string         `xml:"post_upload_cmd"`
+	ValidationCmd          string         `xml:"validation_cmd"`
+	ReloadCmd              string         `xml:"reload_cmd"`
 }
 
 type artifactsXML struct {
@@ -131,21 +132,22 @@ func LoadDeployment(configPath, deploymentID string) (deploy.Deployment, error) 
 	}
 
 	d := deploy.Deployment{
-		ID:                   raw.ID,
-		Name:                 raw.Name,
-		Enabled:              parseBool(raw.Enabled),
-		CertificateName:      raw.CertificateName,
-		Host:                 raw.Host,
-		Port:                 raw.Port,
-		User:                 identity.Name,
-		IdentityPath:         identity.PrivateKeyPath,
-		HostKeyFingerprint:   raw.HostKeyFingerprint,
-		HostKeyIgnoreChanges: parseBool(raw.HostKeyIgnoreChanges),
-		Timeout:              raw.ConnectTimeout,
-		CMDTimeout:           raw.CMDTimeout,
-		UseSFTP:              parseBool(raw.UseSFTP),
-		LegacySCPFallback:    parseBool(raw.LegacySCPFallback),
-		ExtraSSHOpts:         raw.SSHOpts,
+		ID:                     raw.ID,
+		Name:                   raw.Name,
+		Enabled:                parseBool(raw.Enabled),
+		CertificateName:        raw.CertificateName,
+		Host:                   raw.Host,
+		Port:                   raw.Port,
+		User:                   identity.Name,
+		IdentityPath:           identity.PrivateKeyPath,
+		HostKeyFingerprint:     raw.HostKeyFingerprint,
+		HostKeyIgnoreChanges:   parseBool(raw.HostKeyIgnoreChanges),
+		Timeout:                raw.ConnectTimeout,
+		CMDTimeout:             raw.CMDTimeout,
+		UseSFTP:                parseBool(raw.UseSFTP),
+		LegacySCPFallback:      parseBool(raw.LegacySCPFallback),
+		DisableConnectionReuse: parseBool(raw.DisableConnectionReuse),
+		ExtraSSHOpts:           raw.SSHOpts,
 		Destination: deploy.Destination{
 			Directory: raw.Destination.Directory,
 			DirOwner:  raw.Destination.DirOwner,
@@ -182,4 +184,3 @@ func certificateBase(acme acmeXML, name string) string {
 	}
 	return ""
 }
-
