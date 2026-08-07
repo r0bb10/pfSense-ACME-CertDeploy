@@ -93,6 +93,7 @@ stage() {
 manifest() {
 	post_install_script=$(sed "s/%%PORTNAME%%/${PORTNAME}/g" "${FILES}/pkg-install.in" | json_escape)
 	pre_deinstall_script=$(sed "s/%%PORTNAME%%/${PORTNAME}/g" "${FILES}/pkg-deinstall.in" | json_escape)
+	post_deinstall_script=$(sed "s/%%PORTNAME%%/${PORTNAME}/g" "${FILES}/pkg-post-deinstall.in" | json_escape)
 
 	cat > "${BUILD}/+MANIFEST" <<EOF
 name: "${PORTNAME}"
@@ -109,7 +110,8 @@ licenses: ["APACHE20"]
 categories: ["security"]
 scripts: {
   post-install: "${post_install_script}",
-  pre-deinstall: "${pre_deinstall_script}"
+  pre-deinstall: "${pre_deinstall_script}",
+  post-deinstall: "${post_deinstall_script}"
 }
 EOF
 

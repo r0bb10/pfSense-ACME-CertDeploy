@@ -4,8 +4,8 @@
 <packagegui>
 	<name>certdeploy</name>
 	<version>%%PKGVERSION%%</version>
-	<title>Services: CertDeploy</title>
-	<addedit_string>CertDeploy: changed settings</addedit_string>
+	<title>Services: Acme Deployer</title>
+	<addedit_string>Acme Deployer: changed settings</addedit_string>
 	<include_file>/usr/local/pkg/certdeploy.inc</include_file>
 	<configpath>installedpackages->certdeploy->config</configpath>
 	<aftersaveredirect>/certdeploy/certdeploy_general.php</aftersaveredirect>
@@ -13,10 +13,10 @@
 		<name>certdeploy</name>
 		<rcfile>certdeploy</rcfile>
 		<executable>certdeployd</executable>
-		<description>CertDeploy certificate deployment daemon</description>
+		<description>Acme certificate deployer daemon</description>
 	</service>
 	<menu>
-		<name>CertDeploy</name>
+		<name>Acme Deployer</name>
 		<section>Services</section>
 		<configfile>certdeploy.xml</configfile>
 		<url>/certdeploy/certdeploy_general.php</url>

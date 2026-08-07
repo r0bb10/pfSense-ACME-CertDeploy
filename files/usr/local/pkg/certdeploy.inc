@@ -52,6 +52,15 @@ function certdeploy_write_rc_conf() {
 function certdeploy_install() {
 	certdeploy_ensure_directories();
 	certdeploy_write_rc_conf();
+
+	$services = config_get_path('installedpackages/service', []);
+	foreach ($services as $idx => $svc) {
+		if (($svc['name'] ?? '') === 'certdeploy') {
+			config_set_path("installedpackages/service/{$idx}/description", 'Acme certificate deployer daemon');
+			write_config('CertDeploy service description updated');
+			break;
+		}
+	}
 }
 
 function certdeploy_deinstall() {
