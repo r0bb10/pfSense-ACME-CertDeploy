@@ -47,12 +47,6 @@ $runtime_state = certdeploy_global_state();
 $deployments = certdeploy_deployments();
 $acme_certs = certdeploy_acme_certificates();
 
-$sync_counts = ['synced' => 0, 'outdated' => 0, 'missing' => 0, 'disabled' => 0, 'error' => 0, 'nocert' => 0];
-foreach ($deployments as $dep) {
-	$sync = certdeploy_deployment_sync_status($dep);
-	$sync_counts[$sync['state']] = ($sync_counts[$sync['state']] ?? 0) + 1;
-}
-
 $last_scan = $runtime_state['last_scan_time'] ?? 0;
 $last_reconcile = $runtime_state['last_reconcile_time'] ?? 0;
 
@@ -68,48 +62,19 @@ $service_section->addInput(new Form_Checkbox(
 	gettext('Enable CertDeploy daemon'),
 	($settings['enable'] ?? '') === 'on'
 ));
-$service_section->addInput(new Form_Checkbox(
-	'acme_monitor',
-	gettext('ACME Monitor'),
-	gettext('Automatically detect ACME certificate changes'),
-	($settings['acme_monitor'] ?? '') === 'on'
-));
-$service_section->addInput(new Form_Input(
-	'scan_interval',
-	gettext('ACME Scan Interval'),
-	'number',
-	$settings['scan_interval'],
-	['min' => 10, 'max' => 86400]
-))->setHelp(gettext('Seconds between ACME state scans.'));
-$service_section->addInput(new Form_Checkbox(
-	'reconcile',
-	gettext('Reconcile'),
-	gettext('Periodically deploy outdated certificates'),
-	($settings['reconcile'] ?? '') === 'on'
-));
-$service_section->addInput(new Form_Input(
-	'reconcile_interval',
-	gettext('Reconcile Interval'),
-	'number',
-	$settings['reconcile_interval'],
-	['min' => 60, 'max' => 86400]
-))->setHelp(gettext('Seconds between reconciliation runs.'));
-print($service_section);
-
-$status_section = new Form_Section(gettext('Status'));
-$status_section->addInput(new Form_StaticText(
+$service_section->addInput(new Form_StaticText(
 	gettext('Daemon State'),
 	is_service_running('certdeploy') ? gettext('Running') : gettext('Stopped')
 ));
-$status_section->addInput(new Form_StaticText(
+$service_section->addInput(new Form_StaticText(
 	gettext('Last ACME Scan'),
 	$last_scan > 0 ? date('Y-m-d H:i:s', $last_scan) : gettext('Never')
 ));
-$status_section->addInput(new Form_StaticText(
+$service_section->addInput(new Form_StaticText(
 	gettext('Last Reconcile'),
 	$last_reconcile > 0 ? date('Y-m-d H:i:s', $last_reconcile) : gettext('Never')
 ));
-print($status_section);
+print($service_section);
 ?>
 
 <div class="panel panel-default">
@@ -188,25 +153,34 @@ print($status_section);
 	</div>
 </div>
 
-<div class="panel panel-default">
-	<div class="panel-heading">
-		<h2 class="panel-title"><?=gettext('Summary')?></h2>
-	</div>
-	<div class="panel-body">
-		<p>
-			<?=gettext('Total')?>: <strong><?=count($deployments)?></strong> |
-			<?=gettext('In sync')?>: <strong><?=$sync_counts['synced']?></strong> |
-			<?=gettext('Outdated')?>: <strong><?=$sync_counts['outdated']?></strong> |
-			<?=gettext('Missing cert')?>: <strong><?=$sync_counts['missing']?></strong> |
-			<?=gettext('Disabled cert')?>: <strong><?=$sync_counts['disabled']?></strong> |
-			<?=gettext('Error')?>: <strong><?=$sync_counts['error']?></strong> |
-			<?=gettext('No cert')?>: <strong><?=$sync_counts['nocert']?></strong>
-		</p>
-	</div>
-</div>
-
 <?php
 $advanced_section = new Form_Section(gettext('Advanced'), 'advanced-panel', COLLAPSIBLE|SEC_CLOSED);
+$advanced_section->addInput(new Form_Checkbox(
+	'acme_monitor',
+	gettext('ACME Monitor'),
+	gettext('Automatically detect ACME certificate changes'),
+	($settings['acme_monitor'] ?? '') === 'on'
+));
+$advanced_section->addInput(new Form_Input(
+	'scan_interval',
+	gettext('ACME Scan Interval'),
+	'number',
+	$settings['scan_interval'],
+	['min' => 10, 'max' => 86400]
+))->setHelp(gettext('Seconds between ACME state scans.'));
+$advanced_section->addInput(new Form_Checkbox(
+	'reconcile',
+	gettext('Reconcile'),
+	gettext('Periodically deploy outdated certificates'),
+	($settings['reconcile'] ?? '') === 'on'
+));
+$advanced_section->addInput(new Form_Input(
+	'reconcile_interval',
+	gettext('Reconcile Interval'),
+	'number',
+	$settings['reconcile_interval'],
+	['min' => 60, 'max' => 86400]
+))->setHelp(gettext('Seconds between reconciliation runs.'));
 $advanced_section->addInput(new Form_Input(
 	'max_concurrent_targets',
 	gettext('Max Concurrent Targets'),

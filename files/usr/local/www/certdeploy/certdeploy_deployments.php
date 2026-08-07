@@ -94,7 +94,8 @@ display_top_tabs($tab_array);
 		<table class="table table-hover table-striped table-condensed">
 			<thead>
 				<tr>
-					<th><?=gettext('Name')?></th>
+					<th><?=gettext('Username')?></th>
+					<th><?=gettext('Description')?></th>
 					<th><?=gettext('Type')?></th>
 					<th><?=gettext('Fingerprint')?></th>
 					<th><?=gettext('Actions')?></th>
@@ -109,6 +110,7 @@ if (count($identities) > 0):
 ?>
 				<tr>
 					<td><?=htmlspecialchars($ident['name'] ?? '')?></td>
+					<td><?=htmlspecialchars($ident['description'] ?? '')?></td>
 					<td><?=htmlspecialchars($ident['key_type'] ?? '')?></td>
 					<td><?=htmlspecialchars($ident['fingerprint'] ?? '')?></td>
 					<td class="action-icons">
@@ -122,7 +124,7 @@ if (count($identities) > 0):
 else:
 ?>
 				<tr>
-					<td colspan="4">
+					<td colspan="5">
 						<?php print_info_box(gettext('No identities configured. Add an identity to use for SSH authentication.'), 'warning'); ?>
 					</td>
 				</tr>

@@ -71,9 +71,9 @@ if ($_POST) {
 	if (isset($_POST['save'])) {
 		$name = trim($_POST['name'] ?? '');
 		if ($name === '') {
-			$input_errors[] = gettext('Name is required.');
+			$input_errors[] = gettext('Username is required.');
 		} elseif (!preg_match('/^[a-zA-Z0-9_-]+$/', $name)) {
-			$input_errors[] = gettext('Name may contain only letters, numbers, underscores, and hyphens.');
+			$input_errors[] = gettext('Username may contain only letters, numbers, underscores, and hyphens.');
 		}
 
 		$key_type = $_POST['key_type'] ?? 'ed25519';
@@ -160,7 +160,7 @@ $section = new Form_Section(gettext('Identity'));
 
 $section->addInput(new Form_Input(
 	'name',
-	gettext('Name'),
+	gettext('Username'),
 	'text',
 	$pconfig['name'] ?? ''
 ));
