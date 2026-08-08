@@ -349,9 +349,9 @@ func (d *Daemon) reconcile() {
 
 // outdatedDeploymentIDs returns deployment IDs whose current ACME certificate
 // fingerprint differs from the last deployed fingerprint.
-// If reconcile is true, all enabled certificate-backed deployments are returned.
-// If reconcile is false, only deployments with auto_deploy enabled are returned.
-func (d *Daemon) outdatedDeploymentIDs(reconcile bool) ([]string, error) {
+// If includeManualDeployments is true, all enabled certificate-backed deployments are returned.
+// Otherwise, only deployments with auto_deploy enabled are returned.
+func (d *Daemon) outdatedDeploymentIDs(includeManualDeployments bool) ([]string, error) {
 	certs, err := d.acme.Discover()
 	if err != nil {
 		return nil, err
@@ -383,7 +383,7 @@ func (d *Daemon) outdatedDeploymentIDs(reconcile bool) ([]string, error) {
 		if dep.CertificateName == "" {
 			continue
 		}
-		if !reconcile && !dep.AutoDeploy {
+		if !includeManualDeployments && !dep.AutoDeploy {
 			continue
 		}
 		currentFP, ok := fpByName[dep.CertificateName]

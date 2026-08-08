@@ -55,12 +55,6 @@ func (m *Manager) load() (*State, error) {
 	return state, nil
 }
 
-func (m *Manager) Save(state *State) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.save(state)
-}
-
 func (m *Manager) save(state *State) error {
 	if err := os.MkdirAll(filepath.Dir(m.path), 0750); err != nil {
 		return err

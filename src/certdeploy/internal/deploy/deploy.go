@@ -55,7 +55,7 @@ type Deployment struct {
 	HostKeyFingerprint     string
 	HostKeyIgnoreChanges   bool
 	Timeout                int
-	CMDTimeout             int
+	CommandTimeout         int
 	LegacySCPFallback      bool
 	DisableConnectionReuse bool
 	AutoDeploy             bool
@@ -117,7 +117,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		HostKeyFingerprint:   hostKeyFingerprint,
 		HostKeyIgnoreChanges: d.HostKeyIgnoreChanges,
 		Timeout:              d.Timeout,
-		CMDTimeout:           d.CMDTimeout,
+		CommandTimeout:       d.CommandTimeout,
 		LegacySCPFallback:    d.LegacySCPFallback,
 	}
 
@@ -125,10 +125,10 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 	if err := validateArtifacts(d); err != nil {
 		return fail("validate artifacts", err)
 	}
-	if d.CertificateName != "" && !acme.FilesStable(acme.Paths{
+	if d.CertificateName != "" && !acme.CertificateFilesStable(acme.CertificatePaths{
 		Cert:      filepath.Join(d.CertificateBase, d.CertificateName+".crt"),
 		Key:       filepath.Join(d.CertificateBase, d.CertificateName+".key"),
-		Fullchain: filepath.Join(d.CertificateBase, d.CertificateName+".fullchain"),
+		FullChain: filepath.Join(d.CertificateBase, d.CertificateName+".fullchain"),
 	}, 1) {
 		return fail("verify certificate files", fmt.Errorf("ACME certificate files are missing or still changing"))
 	}

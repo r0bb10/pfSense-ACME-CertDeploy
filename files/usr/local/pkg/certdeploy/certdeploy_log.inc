@@ -1,7 +1,5 @@
 <?php
 
-const CERTDEPLOY_LOG_FILE = '/var/log/certdeploy.log';
-
 function certdeploy_log_lines($limit = 250) {
 	if (!is_readable(CERTDEPLOY_LOG_FILE)) {
 		return [];

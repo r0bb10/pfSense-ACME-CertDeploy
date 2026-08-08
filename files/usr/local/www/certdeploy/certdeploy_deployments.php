@@ -191,7 +191,7 @@ if (count($deployments) > 0):
 	foreach ($deployments as $idx => $dep):
 		$id = htmlspecialchars($dep['id'] ?? '');
 		$enabled = ($dep['enabled'] ?? '') === 'on';
-		$state = certdeploy_deployment_state($dep);
+				$state = certdeploy_deployment_display_status($dep);
 ?>
 				<tr <?=$enabled ? '' : 'class="disabled"'?> data-id="<?=$id?>">
 					<td>

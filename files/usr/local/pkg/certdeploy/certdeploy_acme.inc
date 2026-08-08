@@ -20,9 +20,9 @@ function certdeploy_acme_certificates() {
 			}
 		}
 
-		$cm = lookup_cert_by_name($cert['name']);
-		$cm = $cm['item'] ?? [];
-		$descr = $cm['descr'] ?? '';
+		$certificate_record = lookup_cert_by_name($cert['name']);
+		$certificate_record = $certificate_record['item'] ?? [];
+		$descr = $certificate_record['descr'] ?? '';
 
 		$sans = [];
 		if (is_array($cert['a_domainlist']) && is_array($cert['a_domainlist']['item'])) {

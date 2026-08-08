@@ -41,13 +41,13 @@ function certdeploy_write_rc_conf() {
 	}
 
 	$enabled = certdeploy_enabled() ? 'YES' : 'NO';
-	$rcconf = '';
-	$rcconf .= "certdeploy_enable=\"{$enabled}\"\n";
-	$rcconf .= 'certdeploy_config_dir="' . certdeploy_quote_rc_value(CERTDEPLOY_CONFIG_DIR) . "\"\n";
-	$rcconf .= 'certdeploy_log_file="' . certdeploy_quote_rc_value(CERTDEPLOY_LOG_FILE) . "\"\n";
-	$rcconf .= 'certdeploy_socket="' . certdeploy_quote_rc_value(CERTDEPLOY_SOCKET) . "\"\n";
+	$rc_config = '';
+	$rc_config .= "certdeploy_enable=\"{$enabled}\"\n";
+	$rc_config .= 'certdeploy_config_dir="' . certdeploy_quote_rc_value(CERTDEPLOY_CONFIG_DIR) . "\"\n";
+	$rc_config .= 'certdeploy_log_file="' . certdeploy_quote_rc_value(CERTDEPLOY_LOG_FILE) . "\"\n";
+	$rc_config .= 'certdeploy_socket="' . certdeploy_quote_rc_value(CERTDEPLOY_SOCKET) . "\"\n";
 
-	file_put_contents(CERTDEPLOY_RCCONF, $rcconf, LOCK_EX);
+	file_put_contents(CERTDEPLOY_RCCONF, $rc_config, LOCK_EX);
 }
 
 function certdeploy_write_newsyslog_conf() {
@@ -156,7 +156,7 @@ function certdeploy_uuid() {
 	return vsprintf('%s%s%s%s-%s%s-%s%s-%s%s-%s%s%s%s%s%s', str_split(bin2hex($bytes), 2));
 }
 
-function certdeploy_array_next_index($path) {
+function certdeploy_next_config_item_index($path) {
 	$i = 0;
 	while (config_get_path("{$path}/item/{$i}") !== null) {
 		$i++;

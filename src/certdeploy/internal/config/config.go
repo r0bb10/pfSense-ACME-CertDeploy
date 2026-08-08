@@ -7,21 +7,21 @@ import (
 
 // Config is the runtime configuration written by the PHP package.
 type Config struct {
-	Enable               bool   `json:"enable"`
-	ACMEMonitor          bool   `json:"acme_monitor"`
-	ScanInterval         int    `json:"scan_interval"`
-	Reconcile            bool   `json:"reconcile"`
-	ReconcileInterval    int    `json:"reconcile_interval"`
-	MaxConcurrentTargets int    `json:"max_concurrent_targets"`
-	DefaultSSHTimeout    int    `json:"default_ssh_timeout"`
-	DefaultCMDTimeout    int    `json:"default_cmd_timeout"`
-	DefaultRetryCount    int    `json:"default_retry_count"`
-	DefaultRetryDelay    int    `json:"default_retry_delay"`
-	LogLevel             string `json:"log_level"`
-	ConfigPath           string `json:"config_path"`
-	StateFile            string `json:"state_file"`
-	LogFile              string `json:"log_file"`
-	Socket               string `json:"socket"`
+	Enable                bool   `json:"enable"`
+	ACMEMonitor           bool   `json:"acme_monitor"`
+	ScanInterval          int    `json:"scan_interval"`
+	Reconcile             bool   `json:"reconcile"`
+	ReconcileInterval     int    `json:"reconcile_interval"`
+	MaxConcurrentTargets  int    `json:"max_concurrent_targets"`
+	DefaultSSHTimeout     int    `json:"default_ssh_timeout"`
+	DefaultCommandTimeout int    `json:"default_cmd_timeout"`
+	DefaultRetryCount     int    `json:"default_retry_count"`
+	DefaultRetryDelay     int    `json:"default_retry_delay"`
+	LogLevel              string `json:"log_level"`
+	ConfigPath            string `json:"config_path"`
+	StateFile             string `json:"state_file"`
+	LogFile               string `json:"log_file"`
+	Socket                string `json:"socket"`
 }
 
 func Load(path string) (*Config, error) {
@@ -39,8 +39,8 @@ func Load(path string) (*Config, error) {
 	if cfg.DefaultSSHTimeout < 1 {
 		cfg.DefaultSSHTimeout = 30
 	}
-	if cfg.DefaultCMDTimeout < 1 {
-		cfg.DefaultCMDTimeout = 60
+	if cfg.DefaultCommandTimeout < 1 {
+		cfg.DefaultCommandTimeout = 60
 	}
 	if cfg.ScanInterval < 1 {
 		cfg.ScanInterval = 60

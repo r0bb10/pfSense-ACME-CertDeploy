@@ -2,8 +2,6 @@
 
 require_once('util.inc');
 
-const CERTDEPLOY_KEYS_DIR = '/usr/local/etc/certdeploy/keys';
-
 function certdeploy_identity_id_is_valid($id) {
 	return is_string($id) && preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i', $id);
 }

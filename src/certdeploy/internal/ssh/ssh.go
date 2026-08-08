@@ -2,8 +2,6 @@ package ssh
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -36,7 +34,7 @@ type Options struct {
 	KnownHostsFile       string
 	HostKeyAlgorithm     string
 	Timeout              int
-	CMDTimeout           int
+	CommandTimeout       int
 	LegacySCPFallback    bool
 	// ControlSocket is the path to an OpenSSH control socket for connection
 	// multiplexing. When set, ssh/scp invocations reuse that master connection.
@@ -142,23 +140,23 @@ func allowedAlgorithms(algorithm string) string {
 
 // RunCommand executes a remote command and returns its output.
 func (r *Runner) RunCommand(ctx context.Context, opts Options, cmd string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, r.cmdTimeout(opts)*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.commandTimeout(opts)*time.Second)
 	defer cancel()
 	return r.execSSH(ctx, opts, cmd)
 }
 
 // CopyFile copies a local file to a remote path.
 func (r *Runner) CopyFile(ctx context.Context, opts Options, src, dst string) error {
-	ctx, cancel := context.WithTimeout(ctx, r.cmdTimeout(opts)*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.commandTimeout(opts)*time.Second)
 	defer cancel()
 	return r.execSCP(ctx, opts, src, dst)
 }
 
-func (r *Runner) cmdTimeout(opts Options) time.Duration {
-	if opts.CMDTimeout > 0 {
-		return time.Duration(opts.CMDTimeout)
+func (r *Runner) commandTimeout(opts Options) time.Duration {
+	if opts.CommandTimeout > 0 {
+		return time.Duration(opts.CommandTimeout)
 	}
-	return time.Duration(r.cfg.DefaultCMDTimeout)
+	return time.Duration(r.cfg.DefaultCommandTimeout)
 }
 
 // StartControlMaster opens a persistent OpenSSH control connection for
@@ -233,9 +231,8 @@ func selectHostKey(keys []HostKeyResult) HostKeyResult {
 
 // PrepareKnownHosts writes the accepted host key to a temporary known_hosts
 // file and returns a closure that should be called to clean it up.
-func (r *Runner) PrepareKnownHosts(opts Options, keyLine string) (string, func(), error) {
-	dir := os.TempDir()
-	f, err := os.CreateTemp(dir, "certdeploy-kh-*")
+func (r *Runner) PrepareKnownHosts(keyLine string) (string, func(), error) {
+	f, err := os.CreateTemp("", "certdeploy-kh-*")
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create known_hosts temp file: %w", err)
 	}
@@ -307,21 +304,6 @@ func fingerprintFromKeyLine(line string) (string, error) {
 	return fields[1], nil
 }
 
-// FingerprintFromPublicKey computes the standard SSH SHA256 fingerprint for a
-// public key line (e.g. the content of a .pub file).
-func FingerprintFromPublicKey(pub string) (string, error) {
-	parts := strings.Fields(pub)
-	if len(parts) < 2 {
-		return "", fmt.Errorf("invalid public key")
-	}
-	blob, err := base64.StdEncoding.DecodeString(parts[1])
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(blob)
-	return "SHA256:" + base64.RawStdEncoding.EncodeToString(sum[:]), nil
-}
-
 // NormalizeHostKeyLine ensures the host token matches OpenSSH's lookup format.
 func NormalizeHostKeyLine(line, host string, port int) string {
 	fields := strings.Fields(line)
@@ -345,20 +327,6 @@ func (r *Runner) KnownHostsFileFor(ctx context.Context, opts Options) (string, f
 		return "", nil, "", "", err
 	}
 	line := NormalizeHostKeyLine(res.Line, opts.Host, opts.Port)
-	path, cleanup, err := r.PrepareKnownHosts(opts, line)
+	path, cleanup, err := r.PrepareKnownHosts(line)
 	return path, cleanup, res.Fingerprint, res.Algorithm, err
-}
-
-// HostKeyAlgorithm returns the algorithm of the accepted host key for opts.Host.
-func (r *Runner) HostKeyAlgorithm(ctx context.Context, opts Options) (string, error) {
-	res, err := r.ScanAndVerifyHostKey(ctx, opts)
-	if err != nil {
-		return "", err
-	}
-	return res.Algorithm, nil
-}
-
-// TempDir returns the system temp directory for this runner.
-func (r *Runner) TempDir() string {
-	return filepath.Join(os.TempDir(), "certdeploy")
 }

@@ -25,14 +25,15 @@ type Certificate struct {
 	ValidTo     string
 	CN          string
 	SANs        []string
-	Paths       Paths
+	Paths       CertificatePaths
 	Fingerprint string
 }
 
-type Paths struct {
+// CertificatePaths identifies the ACME files for one certificate.
+type CertificatePaths struct {
 	Cert      string
 	Key       string
-	Fullchain string
+	FullChain string
 }
 
 // pfSenseXML mirrors the parts of /cf/conf/config.xml needed for ACME discovery.
@@ -89,10 +90,10 @@ func (d *Discoverer) Discover() ([]Certificate, error) {
 		if raw.Name == "" {
 			continue
 		}
-		paths := Paths{
+		paths := CertificatePaths{
 			Cert:      fmt.Sprintf("/conf/acme/%s.crt", raw.Name),
 			Key:       fmt.Sprintf("/conf/acme/%s.key", raw.Name),
-			Fullchain: fmt.Sprintf("/conf/acme/%s.fullchain", raw.Name),
+			FullChain: fmt.Sprintf("/conf/acme/%s.fullchain", raw.Name),
 		}
 		cert := Certificate{
 			Name:        raw.Name,
@@ -114,8 +115,8 @@ func (d *Discoverer) Discover() ([]Certificate, error) {
 			cert.CN = cert.SANs[0]
 		}
 
-		if _, err := os.Stat(paths.Fullchain); err == nil {
-			fp, err := Fingerprint(paths.Fullchain)
+		if _, err := os.Stat(paths.FullChain); err == nil {
+			fp, err := Fingerprint(paths.FullChain)
 			if err == nil {
 				cert.Fingerprint = fp
 			}
@@ -204,8 +205,8 @@ func parsePrivateKey(der []byte) (crypto.Signer, error) {
 	return nil, fmt.Errorf("unsupported private key format")
 }
 
-// FilesStable returns true if the certificate files have not changed over two reads.
-func FilesStable(paths Paths, waitSeconds int) bool {
+// CertificateFilesStable returns true if certificate files are unchanged over two reads.
+func CertificateFilesStable(paths CertificatePaths, waitSeconds int) bool {
 	stat1, err := statFiles(paths)
 	if err != nil {
 		return false
@@ -220,7 +221,7 @@ func FilesStable(paths Paths, waitSeconds int) bool {
 	return stat1 == stat2
 }
 
-func statFiles(paths Paths) (string, error) {
+func statFiles(paths CertificatePaths) (string, error) {
 	c, err := os.Stat(paths.Cert)
 	if err != nil {
 		return "", err
@@ -229,7 +230,7 @@ func statFiles(paths Paths) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	f, err := os.Stat(paths.Fullchain)
+	f, err := os.Stat(paths.FullChain)
 	if err != nil {
 		return "", err
 	}

@@ -38,7 +38,6 @@ type deploymentXML struct {
 	ID                     string         `xml:"id"`
 	Name                   string         `xml:"name"`
 	Enabled                string         `xml:"enabled"`
-	Description            string         `xml:"description"`
 	CertificateName        string         `xml:"certificate_name"`
 	Host                   string         `xml:"host"`
 	Port                   int            `xml:"port"`
@@ -46,7 +45,7 @@ type deploymentXML struct {
 	HostKeyFingerprint     string         `xml:"host_key_fingerprint"`
 	HostKeyIgnoreChanges   string         `xml:"host_key_ignore_changes"`
 	ConnectTimeout         int            `xml:"connect_timeout"`
-	CMDTimeout             int            `xml:"cmd_timeout"`
+	CommandTimeout         int            `xml:"cmd_timeout"`
 	LegacySCPFallback      string         `xml:"legacy_scp_fallback"`
 	DisableConnectionReuse string         `xml:"disable_connection_reuse"`
 	AutoDeploy             string         `xml:"auto_deploy"`
@@ -65,10 +64,6 @@ type artifactsXML struct {
 type artifactXML struct {
 	Source   string `xml:"source"`
 	Filename string `xml:"filename"`
-	// Deprecated: per-artifact perms moved to the destination triple.
-	Owner     string `xml:"owner"`
-	FileGroup string `xml:"file_group"`
-	Mode      string `xml:"mode"`
 }
 
 type destinationXML struct {
@@ -105,36 +100,17 @@ func parseBool(s string) bool {
 // resolves its identity and ACME certificate.
 func LoadDeployment(configPath, deploymentID string) (deploy.Deployment, error) {
 	var empty deploy.Deployment
-	data, err := os.ReadFile(configPath)
+	cfg, err := loadConfig(configPath)
 	if err != nil {
-		return empty, fmt.Errorf("failed to read config: %w", err)
+		return empty, err
 	}
 
-	var cfg pfSenseConfig
-	if err := xml.Unmarshal(data, &cfg); err != nil {
-		return empty, fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	var raw *deploymentXML
-	for i := range cfg.InstalledPkgs.CertDeploy.Deployments.Items {
-		item := &cfg.InstalledPkgs.CertDeploy.Deployments.Items[i]
-		if item.ID == deploymentID {
-			raw = item
-			break
-		}
-	}
+	raw := findDeployment(cfg, deploymentID)
 	if raw == nil {
 		return empty, fmt.Errorf("deployment not found: %s", deploymentID)
 	}
 
-	var identity *identityXML
-	for i := range cfg.InstalledPkgs.CertDeploy.Identities.Items {
-		item := &cfg.InstalledPkgs.CertDeploy.Identities.Items[i]
-		if item.ID == raw.IdentityID {
-			identity = item
-			break
-		}
-	}
+	identity := findIdentity(cfg, raw.IdentityID)
 	if identity == nil {
 		return empty, fmt.Errorf("identity not found: %s", raw.IdentityID)
 	}
@@ -142,6 +118,38 @@ func LoadDeployment(configPath, deploymentID string) (deploy.Deployment, error) 
 	d := mapDeployment(raw, cfg, identity)
 
 	return d, nil
+}
+
+func loadConfig(path string) (pfSenseConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return pfSenseConfig{}, fmt.Errorf("read config: %w", err)
+	}
+	var cfg pfSenseConfig
+	if err := xml.Unmarshal(data, &cfg); err != nil {
+		return pfSenseConfig{}, fmt.Errorf("parse config: %w", err)
+	}
+	return cfg, nil
+}
+
+func findDeployment(cfg pfSenseConfig, id string) *deploymentXML {
+	for i := range cfg.InstalledPkgs.CertDeploy.Deployments.Items {
+		deployment := &cfg.InstalledPkgs.CertDeploy.Deployments.Items[i]
+		if deployment.ID == id {
+			return deployment
+		}
+	}
+	return nil
+}
+
+func findIdentity(cfg pfSenseConfig, id string) *identityXML {
+	for i := range cfg.InstalledPkgs.CertDeploy.Identities.Items {
+		identity := &cfg.InstalledPkgs.CertDeploy.Identities.Items[i]
+		if identity.ID == id {
+			return identity
+		}
+	}
+	return nil
 }
 
 // mapDeployment converts a parsed deploymentXML into a deploy.Deployment,
@@ -159,7 +167,7 @@ func mapDeployment(raw *deploymentXML, cfg pfSenseConfig, identity *identityXML)
 		HostKeyFingerprint:     raw.HostKeyFingerprint,
 		HostKeyIgnoreChanges:   parseBool(raw.HostKeyIgnoreChanges),
 		Timeout:                raw.ConnectTimeout,
-		CMDTimeout:             raw.CMDTimeout,
+		CommandTimeout:         raw.CommandTimeout,
 		LegacySCPFallback:      parseBool(raw.LegacySCPFallback),
 		DisableConnectionReuse: parseBool(raw.DisableConnectionReuse),
 		AutoDeploy:             parseBool(raw.AutoDeploy),
@@ -215,27 +223,15 @@ func certificateBase(acme acmeXML, name string) string {
 
 // LoadAllDeployments loads all configured deployments from config.xml.
 func LoadAllDeployments(configPath string) ([]deploy.Deployment, error) {
-	data, err := os.ReadFile(configPath)
+	cfg, err := loadConfig(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
-	}
-
-	var cfg pfSenseConfig
-	if err := xml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
+		return nil, err
 	}
 
 	var deployments []deploy.Deployment
 	for i := range cfg.InstalledPkgs.CertDeploy.Deployments.Items {
 		raw := &cfg.InstalledPkgs.CertDeploy.Deployments.Items[i]
-		var identity *identityXML
-		for j := range cfg.InstalledPkgs.CertDeploy.Identities.Items {
-			item := &cfg.InstalledPkgs.CertDeploy.Identities.Items[j]
-			if item.ID == raw.IdentityID {
-				identity = item
-				break
-			}
-		}
+		identity := findIdentity(cfg, raw.IdentityID)
 		if identity == nil {
 			continue
 		}

@@ -47,9 +47,9 @@ if ($_POST) {
 	if (isset($_POST['act']) && $_POST['act'] === 'genkey') {
 		$type = $_POST['genkey_type'] ?? 'ed25519';
 		$name = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['genkey_name'] ?? 'new');
-		$result = certdeploy_identity_generate($name, $type, certdeploy_uuid());
+		$generated_identity = certdeploy_identity_generate($name, $type, certdeploy_uuid());
 		header('Content-Type: application/json');
-		echo json_encode($result);
+		echo json_encode($generated_identity);
 		exit;
 	}
 
@@ -62,9 +62,9 @@ if ($_POST) {
 			echo json_encode(['error' => gettext('Identity ID missing.')]);
 			exit;
 		}
-		$result = certdeploy_identity_generate($name, $type, $uuid);
+		$generated_identity = certdeploy_identity_generate($name, $type, $uuid);
 		header('Content-Type: application/json');
-		echo json_encode($result);
+		echo json_encode($generated_identity);
 		exit;
 	}
 
@@ -129,7 +129,7 @@ if ($_POST) {
 				];
 
 				if ($is_new) {
-					$idx = certdeploy_array_next_index('installedpackages/certdeploy/identities');
+					$idx = certdeploy_next_config_item_index('installedpackages/certdeploy/identities');
 				} else {
 					foreach (certdeploy_identities() as $i => $existing) {
 						if (($existing['id'] ?? '') === $id) {

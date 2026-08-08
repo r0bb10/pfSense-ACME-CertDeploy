@@ -7,15 +7,6 @@ function certdeploy_deployments() {
 	return config_get_path('installedpackages/certdeploy/deployments/item', []);
 }
 
-function certdeploy_deployment_get($id) {
-	foreach (certdeploy_deployments() as $idx => $dep) {
-		if (($dep['id'] ?? '') === $id) {
-			return [$idx, $dep];
-		}
-	}
-	return [null, []];
-}
-
 function certdeploy_deployment_runtime_state($dep_id) {
 	$path = '/var/db/certdeploy/state.json';
 	if (!is_readable($path)) {
@@ -28,7 +19,7 @@ function certdeploy_deployment_runtime_state($dep_id) {
 	return $data['deployments'][$dep_id] ?? [];
 }
 
-function certdeploy_deployment_state($dep) {
+function certdeploy_deployment_display_status($dep) {
 	if (($dep['enabled'] ?? '') !== 'on') {
 		return 'disabled';
 	}
@@ -88,10 +79,6 @@ function certdeploy_deployment_artifact_sources($certificate_name) {
 		$files[$basename] = $info['label'];
 	}
 	return $files;
-}
-
-function certdeploy_deployment_host_key_policies() {
-	return ['fingerprint' => 'Require configured fingerprint'];
 }
 
 function certdeploy_deployment_validate(&$post, &$input_errors) {

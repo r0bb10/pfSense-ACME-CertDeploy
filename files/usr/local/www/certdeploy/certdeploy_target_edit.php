@@ -48,7 +48,7 @@ if ($_POST) {
 		if (empty($input_errors)) {
 			$dep = certdeploy_deployment_build($_POST, $pconfig);
 			if ($is_new) {
-				$idx = certdeploy_array_next_index('installedpackages/certdeploy/deployments');
+				$idx = certdeploy_next_config_item_index('installedpackages/certdeploy/deployments');
 			} else {
 				foreach (certdeploy_deployments() as $i => $existing) {
 					if (($existing['id'] ?? '') === $id) {

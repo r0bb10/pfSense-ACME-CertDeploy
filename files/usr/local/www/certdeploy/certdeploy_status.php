@@ -9,8 +9,7 @@ const CERTDEPLOY_DAEMON_BIN = '/usr/local/sbin/certdeployd';
 
 function certdeploy_status_command_output($command) {
 	$output = [];
-	$result = 0;
-	exec($command . ' 2>&1', $output, $result);
+	exec($command . ' 2>&1', $output);
 	return trim(implode("\n", $output));
 }
 

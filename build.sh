@@ -53,7 +53,6 @@ stage() {
 
 	rm -rf "${STAGE}"
 	mkdir -p \
-		"${STAGE}${PREFIX}/bin" \
 		"${STAGE}${PREFIX}/etc/rc.d" \
 		"${STAGE}${PREFIX}/pkg/certdeploy" \
 		"${STAGE}${PREFIX}/sbin" \

@@ -154,10 +154,6 @@ function certdeploy_backup_restore($data) {
 		rename($tmp, $path);
 	}
 
-	if (!empty($errors)) {
-		return $errors;
-	}
-
 	$config['identities']['item'] = $identities;
 	$config['identities'] = $config['identities'] ?? [];
 	$config['deployments'] = $config['deployments'] ?? [];
