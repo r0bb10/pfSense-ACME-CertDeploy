@@ -135,10 +135,22 @@ function certdeploy_deployment_validate(&$post, &$input_errors) {
 	}
 
 	$destinations = certdeploy_parse_repeatables($post, ['destination_directory', 'destination_owner', 'destination_group', 'destination_mode']);
+	$has_artifacts = false;
+	foreach ($artifacts as $artifact) {
+		if (($artifact['artifact_source'] ?? '') !== '' || ($artifact['artifact_filename'] ?? '') !== '') {
+			$has_artifacts = true;
+			break;
+		}
+	}
+	$has_destination = false;
 	foreach ($destinations as $d) {
 		if (($d['destination_directory'] ?? '') === '') {
-			$input_errors[] = gettext('Destination directory is required.');
+			continue;
 		}
+		$has_destination = true;
+	}
+	if ($has_artifacts && !$has_destination) {
+		$input_errors[] = gettext('A destination directory is required when artifacts are configured.');
 	}
 
 }
@@ -170,8 +182,8 @@ function certdeploy_deployment_build($post, $old = []) {
 	$dep['identity_id'] = $post['identity_id'];
 	$dep['host_key_fingerprint'] = $post['host_key_fingerprint'] ?? '';
 	$dep['host_key_ignore_changes'] = empty($post['host_key_ignore_changes']) ? 'off' : 'on';
-	$dep['connect_timeout'] = is_numericint($post['connect_timeout'] ?? '') ? (int)$post['connect_timeout'] : 0;
-	$dep['cmd_timeout'] = is_numericint($post['cmd_timeout'] ?? '') ? (int)$post['cmd_timeout'] : 0;
+	$dep['connect_timeout'] = is_numericint($post['connect_timeout'] ?? '') && (int)$post['connect_timeout'] <= 86400 ? (int)$post['connect_timeout'] : 0;
+	$dep['cmd_timeout'] = is_numericint($post['cmd_timeout'] ?? '') && (int)$post['cmd_timeout'] <= 86400 ? (int)$post['cmd_timeout'] : 0;
 	$dep['legacy_scp_fallback'] = empty($post['legacy_scp_fallback']) ? 'off' : 'on';
 	$dep['disable_connection_reuse'] = empty($post['disable_connection_reuse']) ? 'off' : 'on';
 	$dep['auto_deploy'] = empty($post['auto_deploy']) ? 'off' : 'on';

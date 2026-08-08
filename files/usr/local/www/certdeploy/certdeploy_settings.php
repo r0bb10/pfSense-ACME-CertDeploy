@@ -28,6 +28,9 @@ if ($_POST) {
 		}
 	} elseif (isset($_POST['restore'])) {
 		if (is_uploaded_file($_FILES['restore_file']['tmp_name'] ?? '')) {
+			if (($_FILES['restore_file']['size'] ?? 0) > 5 * 1024 * 1024) {
+				$input_errors[] = gettext('Backup files must not exceed 5 MB.');
+			} else {
 			$json = file_get_contents($_FILES['restore_file']['tmp_name']);
 			$parsed = certdeploy_backup_parse($json, $_POST['restore_passphrase'] ?? '');
 			if (isset($parsed['error'])) {
@@ -40,6 +43,7 @@ if ($_POST) {
 					header('Location: /certdeploy/certdeploy_status.php');
 					exit;
 				}
+			}
 			}
 		} else {
 			$input_errors[] = gettext('Please choose a CertDeploy backup file to restore.');
@@ -82,83 +86,79 @@ display_top_tabs($tab_array);
 
 ?>
 
-<form method="post" class="form-horizontal">
-
 <?php
-$service_section = new Form_Section(gettext('Service'));
-$service_section->addInput(new Form_Checkbox(
+$form = new Form(false);
+$form->setMultipartEncoding();
+
+$config_section = new Form_Section(gettext('Configuration'));
+$config_section->addInput(new Form_Checkbox(
 	'enable',
 	gettext('Enable'),
 	gettext('Enable CertDeploy daemon'),
 	($settings['enable'] ?? '') === 'on'
 ));
-print($service_section);
-?>
-
-<?php
-$advanced_section = new Form_Section(gettext('Advanced'), 'advanced-panel', COLLAPSIBLE|SEC_CLOSED);
-$advanced_section->addInput(new Form_Checkbox(
+$config_section->addInput(new Form_Checkbox(
 	'acme_monitor',
 	gettext('ACME Monitor'),
 	gettext('Automatically detect ACME certificate changes'),
 	($settings['acme_monitor'] ?? '') === 'on'
 ));
-$advanced_section->addInput(new Form_Input(
+$config_section->addInput(new Form_Input(
 	'scan_interval',
 	gettext('ACME Scan Interval'),
 	'number',
 	$settings['scan_interval'],
 	['min' => 10, 'max' => 86400]
 ))->setHelp(gettext('Seconds between ACME state scans.'));
-$advanced_section->addInput(new Form_Checkbox(
+$config_section->addInput(new Form_Checkbox(
 	'reconcile',
 	gettext('Reconcile'),
 	gettext('Periodically deploy outdated certificates'),
 	($settings['reconcile'] ?? '') === 'on'
 ));
-$advanced_section->addInput(new Form_Input(
+$config_section->addInput(new Form_Input(
 	'reconcile_interval',
 	gettext('Reconcile Interval'),
 	'number',
 	$settings['reconcile_interval'],
 	['min' => 60, 'max' => 86400]
 ))->setHelp(gettext('Seconds between reconciliation runs.'));
-$advanced_section->addInput(new Form_Input(
+$config_section->addInput(new Form_Input(
 	'max_concurrent_targets',
 	gettext('Max Concurrent Targets'),
 	'number',
 	$settings['max_concurrent_targets'],
 	['min' => 1, 'max' => 50]
 ));
-$advanced_section->addInput(new Form_Input(
+$config_section->addInput(new Form_Input(
 	'default_ssh_timeout',
 	gettext('SSH Timeout'),
 	'number',
 	$settings['default_ssh_timeout'],
 	['min' => 1]
 ))->setHelp(gettext('Seconds to wait for SSH connection.'));
-$advanced_section->addInput(new Form_Input(
+$config_section->addInput(new Form_Input(
 	'default_cmd_timeout',
 	gettext('Command Timeout'),
 	'number',
 	$settings['default_cmd_timeout'],
 	['min' => 1]
 ))->setHelp(gettext('Seconds to wait for remote commands.'));
-$advanced_section->addInput(new Form_Input(
+$config_section->addInput(new Form_Input(
 	'default_retry_count',
 	gettext('Retry Count'),
 	'number',
 	$settings['default_retry_count'],
 	['min' => 0]
 ));
-$advanced_section->addInput(new Form_Input(
+$config_section->addInput(new Form_Input(
 	'default_retry_delay',
 	gettext('Retry Delay'),
 	'number',
 	$settings['default_retry_delay'],
 	['min' => 1]
 ))->setHelp(gettext('Seconds between retries.'));
-$advanced_section->addInput(new Form_Select(
+$config_section->addInput(new Form_Select(
 	'log_level',
 	gettext('Log Level'),
 	$settings['log_level'],
@@ -169,53 +169,66 @@ $advanced_section->addInput(new Form_Select(
 		'error' => gettext('Error'),
 	]
 ));
-print($advanced_section);
-?>
+$form->add($config_section);
 
-<div class="col-sm-10 col-sm-offset-2">
-	<button type="submit" name="save" class="btn btn-primary btn-sm">
-		<i class="fa-solid fa-save icon-embed-btn"></i>
-		<?=gettext('Save')?>
-	</button>
-</div>
-
-</form>
-
-<?php
-$backup_section = new Form_Section(gettext('Backup / Restore'), 'backup-panel', COLLAPSIBLE|SEC_CLOSED);
+$backup_section = new Form_Section(gettext('Backup and Restore'));
 $backup_section->addInput(new Form_StaticText(
 	'',
-	gettext('Download the full CertDeploy configuration, including identities, targets, and private keys. Upload a backup to restore after a reinstall.')
+	gettext('Backups include encrypted private keys. Keep the passphrase separately; it cannot be recovered.')
 ));
-print($backup_section);
-?>
+$backup_group = new Form_Group(gettext('Create Encrypted Backup'));
+$backup_group->add(new Form_Input(
+	'backup_passphrase',
+	gettext('Passphrase'),
+	'password',
+	'',
+	['autocomplete' => 'new-password']
+))->setHelp(gettext('At least 12 characters.'));
+$backup_group->add(new Form_Input(
+	'backup_passphrase_confirm',
+	gettext('Confirm Passphrase'),
+	'password',
+	'',
+	['autocomplete' => 'new-password']
+));
+$backup_group->add((new Form_Button(
+	'backup',
+	gettext('Download Backup'),
+	null,
+	'fa-solid fa-download'
+))->addClass('btn-info btn-sm'));
+$backup_section->add($backup_group);
 
-<form method="post" action="/certdeploy/certdeploy_settings.php" class="form-horizontal">
-	<div class="form-group">
-		<label class="col-sm-2 control-label"><?=gettext('Encrypted Backup')?></label>
-		<div class="col-sm-10">
-			<input type="password" name="backup_passphrase" class="form-control" autocomplete="new-password" placeholder="<?=gettext('Passphrase (12 characters minimum)')?>" />
-			<input type="password" name="backup_passphrase_confirm" class="form-control" autocomplete="new-password" placeholder="<?=gettext('Confirm passphrase')?>" style="margin-top: 8px;" />
-			<button type="submit" name="backup" value="1" class="btn btn-info btn-sm" style="margin-top: 8px;">
-				<i class="fa-solid fa-download icon-embed-btn"></i>
-				<?=gettext('Download Config')?>
-			</button>
-		</div>
-	</div>
-</form>
+$restore_group = new Form_Group(gettext('Restore Encrypted Backup'));
+$restore_group->add(new Form_Input(
+	'restore_file',
+	gettext('Backup File'),
+	'file',
+	'',
+	['accept' => '.json,application/json']
+));
+$restore_group->add(new Form_Input(
+	'restore_passphrase',
+	gettext('Passphrase'),
+	'password',
+	'',
+	['autocomplete' => 'current-password']
+));
+$restore_group->add((new Form_Button(
+	'restore',
+	gettext('Restore Backup'),
+	null,
+	'fa-solid fa-upload'
+))->addClass('btn-warning btn-sm'));
+$backup_section->add($restore_group);
+$form->add($backup_section);
 
-<form method="post" action="/certdeploy/certdeploy_settings.php" enctype="multipart/form-data" class="form-horizontal">
-	<div class="form-group">
-		<label class="col-sm-2 control-label"><?=gettext('Restore')?></label>
-		<div class="col-sm-10">
-			<input type="file" name="restore_file" accept=".json,application/json" class="form-control" />
-			<input type="password" name="restore_passphrase" class="form-control" autocomplete="current-password" placeholder="<?=gettext('Backup passphrase')?>" style="margin-top: 8px;" />
-			<button type="submit" name="restore" value="1" class="btn btn-primary btn-sm" style="margin-top: 8px;">
-				<i class="fa-solid fa-upload icon-embed-btn"></i>
-				<?=gettext('Restore Config')?>
-			</button>
-		</div>
-	</div>
-</form>
+$form->addGlobal((new Form_Button(
+	'save',
+	gettext('Save Configuration'),
+	null,
+	'fa-solid fa-save'
+))->addClass('btn-primary btn-sm'));
+print($form);
 
-<?php include('foot.inc');
+include('foot.inc');

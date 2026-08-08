@@ -17,16 +17,16 @@ function certdeploy_general_defaults() {
 }
 
 function certdeploy_general_validate(&$post, &$input_errors) {
-	$interval = (int)($post['scan_interval'] ?? 0);
-	if ($interval < 10 || $interval > 86400) {
+	$interval = $post['scan_interval'] ?? '';
+	if (!is_numericint($interval) || (int)$interval < 10 || (int)$interval > 86400) {
 		$input_errors[] = gettext('ACME scan interval must be between 10 and 86400 seconds.');
 	}
-	$reconcile = (int)($post['reconcile_interval'] ?? 0);
-	if ($reconcile < 60 || $reconcile > 86400) {
+	$reconcile = $post['reconcile_interval'] ?? '';
+	if (!is_numericint($reconcile) || (int)$reconcile < 60 || (int)$reconcile > 86400) {
 		$input_errors[] = gettext('Reconciliation interval must be between 60 and 86400 seconds.');
 	}
-	$concurrent = (int)($post['max_concurrent_targets'] ?? 0);
-	if ($concurrent < 1 || $concurrent > 50) {
+	$concurrent = $post['max_concurrent_targets'] ?? '';
+	if (!is_numericint($concurrent) || (int)$concurrent < 1 || (int)$concurrent > 50) {
 		$input_errors[] = gettext('Maximum concurrent targets must be between 1 and 50.');
 	}
 	foreach (['default_ssh_timeout', 'default_cmd_timeout', 'default_retry_delay'] as $f) {

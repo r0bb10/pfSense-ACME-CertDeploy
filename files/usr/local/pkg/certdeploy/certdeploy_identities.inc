@@ -6,6 +6,13 @@ function certdeploy_identity_id_is_valid($id) {
 	return is_string($id) && preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i', $id);
 }
 
+function certdeploy_identity_key_path($id) {
+	if (!certdeploy_identity_id_is_valid($id)) {
+		return false;
+	}
+	return CERTDEPLOY_KEYS_DIR . '/' . $id;
+}
+
 function certdeploy_identities() {
 	return config_get_path('installedpackages/certdeploy/identities/item', []);
 }

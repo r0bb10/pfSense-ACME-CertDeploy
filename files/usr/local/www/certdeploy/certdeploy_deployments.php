@@ -36,16 +36,25 @@ if ($_POST && isset($_POST['act'])) {
 	foreach (certdeploy_identities() as $idx => $ident) {
 		if (($ident['id'] ?? '') === $id) {
 			if ($_POST['act'] === 'delete') {
-				$path = $ident['private_key_path'] ?? '';
-				if ($path !== '' && is_file($path)) {
+				foreach (certdeploy_deployments() as $deployment) {
+					if (($deployment['identity_id'] ?? '') === $id) {
+						$input_errors[] = gettext('This identity is still used by a deployment.');
+						break;
+					}
+				}
+				if (!empty($input_errors)) {
+					break;
+				}
+				$path = certdeploy_identity_key_path($id);
+				config_del_path("installedpackages/certdeploy/identities/item/{$idx}");
+				write_config('CertDeploy identity deleted');
+				certdeploy_sync();
+				if ($path !== false && is_file($path)) {
 					unlink($path);
 					if (is_file($path . '.pub')) {
 						unlink($path . '.pub');
 					}
 				}
-				config_del_path("installedpackages/certdeploy/identities/item/{$idx}");
-				write_config('CertDeploy identity deleted');
-				certdeploy_sync();
 			}
 			break;
 		}
@@ -64,6 +73,8 @@ if ($_POST && isset($_POST['act'])) {
 				write_config('CertDeploy target toggled');
 				certdeploy_sync();
 			} elseif ($_POST['act'] === 'deploy') {
+				header('Content-Type: text/plain; charset=utf-8');
+				header('Cache-Control: no-store');
 				$output = shell_exec('/usr/local/sbin/certdeployctl deploy ' . escapeshellarg($id) . ' 2>&1');
 				if ($ajax) {
 					echo trim($output);
@@ -191,12 +202,11 @@ if (count($deployments) > 0):
 	foreach ($deployments as $idx => $dep):
 		$id = htmlspecialchars($dep['id'] ?? '');
 		$enabled = ($dep['enabled'] ?? '') === 'on';
-				$state = certdeploy_deployment_display_status($dep);
 ?>
 				<tr <?=$enabled ? '' : 'class="disabled"'?> data-id="<?=$id?>">
 					<td>
 						<a href="?act=toggle&amp;id=<?=$id?>" usepost>
-							<i class="fa-solid fa-check" title="<?=gettext('click to toggle enabled/disabled status')?>"></i>
+							<i class="fa-solid <?=$enabled ? 'fa-check' : 'fa-ban'?>" title="<?=gettext('click to toggle enabled/disabled status')?>"></i>
 						</a>
 					</td>
 					<td><?=htmlspecialchars($dep['name'] ?? '')?></td>
