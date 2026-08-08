@@ -16,7 +16,6 @@ DIST="${ROOT}/dist"
 
 clean() {
 	rm -rf "${BUILD}"
-	# do not remove dist, it may contain prebuilt binaries
 }
 
 json_escape() {
@@ -30,21 +29,23 @@ build_go() {
 	fi
 
 	mkdir -p "${DIST}"
-
-	if [ ! -x "${DIST}/certdeployd" ] || [ ! -x "${DIST}/certdeployctl" ]; then
-		echo "Building Go binaries for FreeBSD amd64..."
-		(
-			cd "${SRC}"
-			GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build \
-				-buildvcs=false \
-				-ldflags="-s -w -X main.version=${PORTVERSION}" \
-				-o "${DIST}/certdeployd" ./cmd/certdeployd
-			GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build \
-				-buildvcs=false \
-				-ldflags="-s -w -X main.version=${PORTVERSION}" \
-				-o "${DIST}/certdeployctl" ./cmd/certdeployctl
-		)
+	if [ "${CERTDEPLOY_USE_PREBUILT:-0}" = "1" ] && [ -x "${DIST}/certdeployd" ] && [ -x "${DIST}/certdeployctl" ]; then
+		echo "Using explicitly supplied prebuilt Go binaries..."
+		return
 	fi
+	rm -f "${DIST}/certdeployd" "${DIST}/certdeployctl"
+	echo "Building Go binaries for FreeBSD amd64..."
+	(
+		cd "${SRC}"
+		GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build \
+			-buildvcs=false \
+			-ldflags="-s -w -X main.version=${PORTVERSION}" \
+			-o "${DIST}/certdeployd" ./cmd/certdeployd
+		GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build \
+			-buildvcs=false \
+			-ldflags="-s -w -X main.version=${PORTVERSION}" \
+			-o "${DIST}/certdeployctl" ./cmd/certdeployctl
+	)
 }
 
 stage() {

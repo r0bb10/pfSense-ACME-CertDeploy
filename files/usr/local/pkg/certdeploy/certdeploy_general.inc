@@ -34,6 +34,9 @@ function certdeploy_general_validate(&$post, &$input_errors) {
 			$input_errors[] = gettext(ucfirst(str_replace('_', ' ', $f)) . ' must be at least 1 second.');
 		}
 	}
+	if ((int)($post['default_retry_count'] ?? -1) < 0 || (int)($post['default_retry_count'] ?? 0) > 10) {
+		$input_errors[] = gettext('Default retry count must be between 0 and 10.');
+	}
 	$levels = ['debug', 'info', 'warn', 'error'];
 	if (!in_array($post['log_level'] ?? '', $levels, true)) {
 		$input_errors[] = gettext('Log level must be debug, info, warn, or error.');

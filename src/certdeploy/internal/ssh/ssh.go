@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -38,8 +37,6 @@ type Options struct {
 	HostKeyAlgorithm     string
 	Timeout              int
 	CMDTimeout           int
-	ExtraSSHOpts         string
-	UseSFTP              bool
 	LegacySCPFallback    bool
 	// ControlSocket is the path to an OpenSSH control socket for connection
 	// multiplexing. When set, ssh/scp invocations reuse that master connection.
@@ -123,7 +120,6 @@ func (r *Runner) baseArgs(opts Options) []string {
 			"-o", "ControlMaster=no",
 		)
 	}
-	args = append(args, strings.Fields(opts.ExtraSSHOpts)...)
 	return args
 }
 
@@ -221,35 +217,18 @@ func (r *Runner) ScanAndVerifyHostKey(ctx context.Context, opts Options) (HostKe
 		return result, fmt.Errorf("host key fingerprint mismatch: none of the returned keys matched %s", opts.HostKeyFingerprint)
 	}
 
-	// No configured fingerprint (or ignore-changes): prefer ED25519, then ECDSA, then RSA.
-	var selected HostKeyResult
-	for _, k := range keys {
-		if k.Algorithm == "ssh-ed25519" {
-			selected = k
-			break
-		}
-	}
-	if selected.Fingerprint == "" {
-		for _, k := range keys {
-			if strings.HasPrefix(k.Algorithm, "ecdsa-sha2-") {
-				selected = k
-				break
-			}
-		}
-	}
-	if selected.Fingerprint == "" {
-		for _, k := range keys {
-			if k.Algorithm == "ssh-rsa" {
-				selected = k
-				break
-			}
-		}
-	}
-	if selected.Fingerprint == "" {
-		selected = keys[0]
-	}
+	return selectHostKey(keys), nil
+}
 
-	return selected, nil
+func selectHostKey(keys []HostKeyResult) HostKeyResult {
+	for _, algorithm := range []string{"ssh-ed25519", "ecdsa-sha2-", "ssh-rsa"} {
+		for _, key := range keys {
+			if key.Algorithm == algorithm || (strings.HasSuffix(algorithm, "-") && strings.HasPrefix(key.Algorithm, algorithm)) {
+				return key
+			}
+		}
+	}
+	return keys[0]
 }
 
 // PrepareKnownHosts writes the accepted host key to a temporary known_hosts
@@ -343,12 +322,18 @@ func FingerprintFromPublicKey(pub string) (string, error) {
 	return "SHA256:" + base64.RawStdEncoding.EncodeToString(sum[:]), nil
 }
 
-var hostLineHostRE = regexp.MustCompile(`^([^\s]+)\s`)
-
-// NormalizeHostKeyLine ensures the line uses the plain hostname so OpenSSH
-// matches it regardless of how ssh-keyscan formatted the entry.
-func NormalizeHostKeyLine(line, host string) string {
-	return hostLineHostRE.ReplaceAllString(line, host+" ")
+// NormalizeHostKeyLine ensures the host token matches OpenSSH's lookup format.
+func NormalizeHostKeyLine(line, host string, port int) string {
+	fields := strings.Fields(line)
+	if len(fields) < 3 {
+		return line
+	}
+	if port == 0 || port == 22 {
+		fields[0] = host
+	} else {
+		fields[0] = "[" + host + "]:" + fmt.Sprintf("%d", port)
+	}
+	return strings.Join(fields, " ")
 }
 
 // KnownHostsFileFor prepares and returns the path to a known_hosts file
@@ -359,7 +344,7 @@ func (r *Runner) KnownHostsFileFor(ctx context.Context, opts Options) (string, f
 	if err != nil {
 		return "", nil, "", "", err
 	}
-	line := NormalizeHostKeyLine(res.Line, opts.Host)
+	line := NormalizeHostKeyLine(res.Line, opts.Host, opts.Port)
 	path, cleanup, err := r.PrepareKnownHosts(opts, line)
 	return path, cleanup, res.Fingerprint, res.Algorithm, err
 }

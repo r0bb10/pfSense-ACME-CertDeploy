@@ -8,10 +8,6 @@ require_once('certdeploy.inc');
 
 $shortcut_section = 'certdeploy';
 
-if (isset($_GET['download'])) {
-	certdeploy_backup_download();
-}
-
 $settings = certdeploy_settings();
 $defaults = certdeploy_general_defaults();
 foreach ($defaults as $k => $v) {
@@ -23,10 +19,17 @@ foreach ($defaults as $k => $v) {
 if ($_POST) {
 	$input_errors = [];
 
-	if (isset($_POST['restore'])) {
+	if (isset($_POST['backup'])) {
+		$passphrase = $_POST['backup_passphrase'] ?? '';
+		if ($passphrase !== ($_POST['backup_passphrase_confirm'] ?? '')) {
+			$input_errors[] = gettext('Backup passphrase confirmation does not match.');
+		} elseif (($error = certdeploy_backup_download($passphrase)) !== null) {
+			$input_errors[] = $error;
+		}
+	} elseif (isset($_POST['restore'])) {
 		if (is_uploaded_file($_FILES['restore_file']['tmp_name'] ?? '')) {
 			$json = file_get_contents($_FILES['restore_file']['tmp_name']);
-			$parsed = certdeploy_backup_parse($json);
+			$parsed = certdeploy_backup_parse($json, $_POST['restore_passphrase'] ?? '');
 			if (isset($parsed['error'])) {
 				$input_errors[] = $parsed['error'];
 			} else {
@@ -48,17 +51,17 @@ if ($_POST) {
 			include('foot.inc');
 			exit;
 		}
+	} else {
+		certdeploy_general_validate($_POST, $input_errors);
+		if (empty($input_errors)) {
+			config_set_path('installedpackages/certdeploy/config/0', certdeploy_general_build($_POST));
+			write_config('CertDeploy general settings updated');
+			certdeploy_sync();
+			header('Location: /certdeploy/certdeploy_settings.php');
+			exit;
+		}
+		$settings = certdeploy_general_build($_POST);
 	}
-
-	certdeploy_general_validate($_POST, $input_errors);
-	if (empty($input_errors)) {
-		config_set_path('installedpackages/certdeploy/config/0', certdeploy_general_build($_POST));
-		write_config('CertDeploy general settings updated');
-		certdeploy_sync();
-		header('Location: /certdeploy/certdeploy_settings.php');
-		exit;
-	}
-	$settings = certdeploy_general_build($_POST);
 }
 
 $pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Settings')];
@@ -187,11 +190,13 @@ $backup_section->addInput(new Form_StaticText(
 print($backup_section);
 ?>
 
-<form method="get" action="/certdeploy/certdeploy_settings.php" class="form-horizontal">
+<form method="post" action="/certdeploy/certdeploy_settings.php" class="form-horizontal">
 	<div class="form-group">
-		<label class="col-sm-2 control-label"><?=gettext('Backup')?></label>
+		<label class="col-sm-2 control-label"><?=gettext('Encrypted Backup')?></label>
 		<div class="col-sm-10">
-			<button type="submit" name="download" value="1" class="btn btn-info btn-sm">
+			<input type="password" name="backup_passphrase" class="form-control" autocomplete="new-password" placeholder="<?=gettext('Passphrase (12 characters minimum)')?>" />
+			<input type="password" name="backup_passphrase_confirm" class="form-control" autocomplete="new-password" placeholder="<?=gettext('Confirm passphrase')?>" style="margin-top: 8px;" />
+			<button type="submit" name="backup" value="1" class="btn btn-info btn-sm" style="margin-top: 8px;">
 				<i class="fa-solid fa-download icon-embed-btn"></i>
 				<?=gettext('Download Config')?>
 			</button>
@@ -204,6 +209,7 @@ print($backup_section);
 		<label class="col-sm-2 control-label"><?=gettext('Restore')?></label>
 		<div class="col-sm-10">
 			<input type="file" name="restore_file" accept=".json,application/json" class="form-control" />
+			<input type="password" name="restore_passphrase" class="form-control" autocomplete="current-password" placeholder="<?=gettext('Backup passphrase')?>" style="margin-top: 8px;" />
 			<button type="submit" name="restore" value="1" class="btn btn-primary btn-sm" style="margin-top: 8px;">
 				<i class="fa-solid fa-upload icon-embed-btn"></i>
 				<?=gettext('Restore Config')?>

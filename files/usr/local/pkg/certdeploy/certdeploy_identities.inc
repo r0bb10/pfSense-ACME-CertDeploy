@@ -4,6 +4,10 @@ require_once('util.inc');
 
 const CERTDEPLOY_KEYS_DIR = '/usr/local/etc/certdeploy/keys';
 
+function certdeploy_identity_id_is_valid($id) {
+	return is_string($id) && preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i', $id);
+}
+
 function certdeploy_identities() {
 	return config_get_path('installedpackages/certdeploy/identities/item', []);
 }
@@ -42,7 +46,10 @@ function certdeploy_identity_fingerprint_from_public_key($public_key) {
 
 function certdeploy_identity_generate($name, $type = 'ed25519', $uuid = null) {
 	$key_dir = CERTDEPLOY_KEYS_DIR;
-	$real_path = $key_dir . '/' . ($uuid ?: preg_replace('/[^a-zA-Z0-9_-]/', '', $name));
+	if (!certdeploy_identity_id_is_valid($uuid)) {
+		return ['error' => gettext('Invalid identity ID.')];
+	}
+	$real_path = $key_dir . '/' . $uuid;
 	$tmp_path = tempnam('/tmp', 'cdkey');
 	@unlink($tmp_path);
 	if ($type === 'ed25519') {
@@ -96,10 +103,13 @@ function certdeploy_identity_fingerprint($private_key_path) {
 
 function certdeploy_identity_save_import($name, $key_pem, $uuid = null) {
 	$key_dir = CERTDEPLOY_KEYS_DIR;
+	if (!certdeploy_identity_id_is_valid($uuid)) {
+		return false;
+	}
 	if (!is_dir($key_dir)) {
 		mkdir($key_dir, 0700, true);
 	}
-	$path = $key_dir . '/' . ($uuid ?: preg_replace('/[^a-zA-Z0-9_-]/', '', $name));
+	$path = $key_dir . '/' . $uuid;
 	$tmp = $path . '.tmp';
 	// Browsers may submit CRLF line endings in textareas; normalize to LF.
 	$key_pem = str_replace(["\r\n", "\r"], "\n", $key_pem);

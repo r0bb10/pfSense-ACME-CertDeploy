@@ -56,11 +56,9 @@ type Deployment struct {
 	HostKeyIgnoreChanges   bool
 	Timeout                int
 	CMDTimeout             int
-	UseSFTP                bool
 	LegacySCPFallback      bool
 	DisableConnectionReuse bool
 	AutoDeploy             bool
-	ExtraSSHOpts           string
 	Artifacts              []Artifact
 	Destination            Destination
 	ExtraDestinations      []Destination
@@ -81,8 +79,18 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 	log := e.logger.With(slog.String("deployment", d.ID), slog.String("name", d.Name))
 	start := time.Now()
 	result := RunResult{}
+	type replacement struct {
+		final   string
+		backup  string
+		missing string
+	}
+	var replacements []replacement
+	var rollback func()
 
 	fail := func(step string, err error) RunResult {
+		if rollback != nil && len(replacements) > 0 {
+			rollback()
+		}
 		result.Error = fmt.Errorf("%s: %w", step, err)
 		e.record(d.ID, "failed", result.HostKeyFingerprint, "", result.Error)
 		return result
@@ -92,21 +100,46 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		return fail("deployment disabled", fmt.Errorf("deployment is disabled"))
 	}
 
+	hostKeyFingerprint := d.HostKeyFingerprint
+	if hostKeyFingerprint == "" && !d.HostKeyIgnoreChanges {
+		stored, err := e.state.Load()
+		if err != nil {
+			return fail("load trusted host key", err)
+		}
+		hostKeyFingerprint = stored.Deployments[d.ID].HostKeyFingerprint
+	}
+
 	opts := ssh.Options{
 		Host:                 d.Host,
 		Port:                 d.Port,
 		User:                 d.User,
 		IdentityPath:         d.IdentityPath,
-		HostKeyFingerprint:   d.HostKeyFingerprint,
+		HostKeyFingerprint:   hostKeyFingerprint,
 		HostKeyIgnoreChanges: d.HostKeyIgnoreChanges,
 		Timeout:              d.Timeout,
 		CMDTimeout:           d.CMDTimeout,
-		ExtraSSHOpts:         d.ExtraSSHOpts,
-		UseSFTP:              d.UseSFTP,
 		LegacySCPFallback:    d.LegacySCPFallback,
 	}
 
 	log.Info("starting deployment", slog.String("host", d.Host))
+	if err := validateArtifacts(d); err != nil {
+		return fail("validate artifacts", err)
+	}
+	if d.CertificateName != "" && !acme.FilesStable(acme.Paths{
+		Cert:      filepath.Join(d.CertificateBase, d.CertificateName+".crt"),
+		Key:       filepath.Join(d.CertificateBase, d.CertificateName+".key"),
+		Fullchain: filepath.Join(d.CertificateBase, d.CertificateName+".fullchain"),
+	}, 1) {
+		return fail("verify certificate files", fmt.Errorf("ACME certificate files are missing or still changing"))
+	}
+	if d.CertificateName != "" {
+		if err := acme.ValidateKeyPair(
+			filepath.Join(d.CertificateBase, d.CertificateName+".crt"),
+			filepath.Join(d.CertificateBase, d.CertificateName+".key"),
+		); err != nil {
+			return fail("verify certificate and private key", err)
+		}
+	}
 
 	// Scan and verify host key. This also captures the fingerprint for new targets.
 	log.Debug("scanning host key")
@@ -129,6 +162,49 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		}
 		defer cleanupMaster()
 		opts.ControlSocket = socket
+	}
+
+	rollback = func() {
+		for _, replacement := range replacements {
+			cmd := fmt.Sprintf(
+				"if [ -f %s ]; then mv -f %s %s; elif [ -f %s ]; then rm -f %s %s; fi",
+				shellQuote(replacement.backup), shellQuote(replacement.backup), shellQuote(replacement.final),
+				shellQuote(replacement.missing), shellQuote(replacement.final), shellQuote(replacement.missing),
+			)
+			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+				log.Error("failed to restore previous remote artifact",
+					slog.String("file", replacement.final), slog.Any("error", err))
+			}
+		}
+	}
+	activate := func(tmp, final string) error {
+		replacement := replacement{
+			final:   final,
+			backup:  final + ".certdeploy-previous",
+			missing: final + ".certdeploy-missing",
+		}
+		cmd := fmt.Sprintf(
+			"rm -f %s %s; if [ -e %s ]; then cp -p %s %s; else : > %s; fi",
+			shellQuote(replacement.backup), shellQuote(replacement.missing), shellQuote(replacement.final),
+			shellQuote(replacement.final), shellQuote(replacement.backup), shellQuote(replacement.missing),
+		)
+		if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+			return fmt.Errorf("back up current artifact: %w", err)
+		}
+		replacements = append(replacements, replacement)
+		cmd = fmt.Sprintf("mv -f %s %s", shellQuote(tmp), shellQuote(final))
+		if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+			return fmt.Errorf("activate artifact: %w", err)
+		}
+		return nil
+	}
+	cleanupReplacements := func() {
+		for _, replacement := range replacements {
+			cmd := fmt.Sprintf("rm -f %s %s", shellQuote(replacement.backup), shellQuote(replacement.missing))
+			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+				log.Warn("failed to clean deployment backup", slog.String("file", replacement.backup), slog.Any("error", err))
+			}
+		}
 	}
 
 	primary := d.Destination
@@ -202,8 +278,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 			final := filepath.Join(primary.Directory, art.Filename)
 			tmp := final + ".certdeploy-tmp"
 			log.Debug("moving artifact into place", slog.String("file", art.Filename))
-			cmd := fmt.Sprintf("mv -f %s %s", shellQuote(tmp), shellQuote(final))
-			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+			if err := activate(tmp, final); err != nil {
 				return fail("move artifact into place", err)
 			}
 		}
@@ -237,8 +312,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 			if err := applyPerms(tmp, extra.Owner, extra.Group, extra.Mode, "set artifact perms"); err != nil {
 				return fail("set artifact perms "+art.Filename, err)
 			}
-			cmd = fmt.Sprintf("mv -f %s %s", shellQuote(tmp), shellQuote(final))
-			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+			if err := activate(tmp, final); err != nil {
 				return fail("move artifact into place", err)
 			}
 		}
@@ -259,6 +333,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 			return fail("reload command", err)
 		}
 	}
+	cleanupReplacements()
 
 	// 8. Record success and current certificate fingerprint.
 	if hasFiles && d.CertificateName != "" {
@@ -282,10 +357,29 @@ func (e *Engine) record(id, status, hostKeyFingerprint, certFingerprint string, 
 	if err != nil {
 		ds.LastRunStatus = "failed"
 	}
-	if err := e.state.UpdateDeployment(id, ds); err != nil {
+	if err := e.state.UpdateDeployment(id, ds, status == "success"); err != nil {
 		e.logger.Error("failed to save state",
 			slog.String("deployment", id), slog.Any("error", err))
 	}
+}
+
+func validateArtifacts(d Deployment) error {
+	for _, art := range d.Artifacts {
+		if art.Source == "" || art.Source != filepath.Base(art.Source) {
+			return fmt.Errorf("invalid artifact source %q", art.Source)
+		}
+		if art.Filename == "" || art.Filename != filepath.Base(art.Filename) || art.Filename == "." || art.Filename == ".." {
+			return fmt.Errorf("invalid artifact filename %q", art.Filename)
+		}
+		if d.CertificateName != "" {
+			switch art.Source {
+			case d.CertificateName + ".crt", d.CertificateName + ".key", d.CertificateName + ".fullchain":
+			default:
+				return fmt.Errorf("artifact source %q does not belong to certificate %q", art.Source, d.CertificateName)
+			}
+		}
+	}
+	return nil
 }
 
 func shellQuote(s string) string {

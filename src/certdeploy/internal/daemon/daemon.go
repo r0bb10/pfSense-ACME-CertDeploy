@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,16 +22,18 @@ import (
 
 // Daemon runs the CertDeploy background service.
 type Daemon struct {
-	cfg     *config.Config
-	logger  *slog.Logger
-	logFile *logFile
-	version string
-	state   *state.Manager
-	ssh     *ssh.Runner
-	engine  *deploy.Engine
-	socket  string
-	acme    *acme.Discoverer
-	sem     chan struct{}
+	cfg      *config.Config
+	logger   *slog.Logger
+	logFile  *logFile
+	version  string
+	state    *state.Manager
+	ssh      *ssh.Runner
+	engine   *deploy.Engine
+	socket   string
+	acme     *acme.Discoverer
+	sem      chan struct{}
+	mu       sync.Mutex
+	inFlight map[string]struct{}
 }
 
 func parseLogLevel(level string) slog.Level {
@@ -71,16 +74,17 @@ func New(cfg *config.Config, version string) (*Daemon, error) {
 	}
 
 	d := &Daemon{
-		cfg:     cfg,
-		logger:  lg.With("component", "daemon"),
-		logFile: lf,
-		version: version,
-		state:   stateMgr,
-		ssh:     runner,
-		engine:  engine,
-		socket:  cfg.Socket,
-		acme:    acme.New(cfg),
-		sem:     make(chan struct{}, maxConcurrent),
+		cfg:      cfg,
+		logger:   lg.With("component", "daemon"),
+		logFile:  lf,
+		version:  version,
+		state:    stateMgr,
+		ssh:      runner,
+		engine:   engine,
+		socket:   cfg.Socket,
+		acme:     acme.New(cfg),
+		sem:      make(chan struct{}, maxConcurrent),
+		inFlight: make(map[string]struct{}),
 	}
 
 	if err := os.MkdirAll("/var/run/certdeploy", 0750); err != nil {
@@ -99,6 +103,10 @@ func (d *Daemon) Run() error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if err := removeStaleSocket(d.socket); err != nil {
+		return err
+	}
 
 	// Start control socket listener.
 	ln, err := net.Listen("unix", d.socket)
@@ -146,6 +154,20 @@ func (d *Daemon) Run() error {
 }
 
 func (d *Daemon) runDeployment(id string) {
+	d.mu.Lock()
+	if _, exists := d.inFlight[id]; exists {
+		d.mu.Unlock()
+		d.logger.Debug("deployment already queued or running", slog.String("deployment", id))
+		return
+	}
+	d.inFlight[id] = struct{}{}
+	d.mu.Unlock()
+	defer func() {
+		d.mu.Lock()
+		delete(d.inFlight, id)
+		d.mu.Unlock()
+	}()
+
 	d.sem <- struct{}{}
 	defer func() { <-d.sem }()
 
@@ -158,7 +180,16 @@ func (d *Daemon) runDeployment(id string) {
 
 	log := d.logger.With(slog.String("deployment", id), slog.String("name", dep.Name))
 
-	result := d.engine.Run(context.Background(), dep)
+	var result deploy.RunResult
+	for attempt := 0; ; attempt++ {
+		result = d.engine.Run(context.Background(), dep)
+		if result.Error == nil || attempt >= d.cfg.DefaultRetryCount {
+			break
+		}
+		log.Warn("deployment failed; retrying",
+			slog.Int("attempt", attempt+1), slog.Any("error", result.Error))
+		time.Sleep(time.Duration(d.cfg.DefaultRetryDelay) * time.Second)
+	}
 	if result.Error != nil {
 		log.Error("deployment failed", slog.Any("error", result.Error))
 		return
@@ -169,6 +200,28 @@ func (d *Daemon) runDeployment(id string) {
 		log.Info("host key fingerprint changed",
 			slog.String("fingerprint", result.HostKeyFingerprint))
 	}
+}
+
+func removeStaleSocket(path string) error {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect control socket: %w", err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("control socket path is not a socket: %s", path)
+	}
+	conn, err := net.DialTimeout("unix", path, time.Second)
+	if err == nil {
+		_ = conn.Close()
+		return fmt.Errorf("control socket is already in use: %s", path)
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("remove stale control socket: %w", err)
+	}
+	return nil
 }
 
 func (d *Daemon) acceptLoop(ctx context.Context, ln net.Listener) {

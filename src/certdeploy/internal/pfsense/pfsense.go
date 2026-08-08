@@ -47,11 +47,9 @@ type deploymentXML struct {
 	HostKeyIgnoreChanges   string         `xml:"host_key_ignore_changes"`
 	ConnectTimeout         int            `xml:"connect_timeout"`
 	CMDTimeout             int            `xml:"cmd_timeout"`
-	UseSFTP                string         `xml:"use_sftp"`
 	LegacySCPFallback      string         `xml:"legacy_scp_fallback"`
 	DisableConnectionReuse string         `xml:"disable_connection_reuse"`
 	AutoDeploy             string         `xml:"auto_deploy"`
-	SSHOpts                string         `xml:"ssh_opts"`
 	Artifacts              artifactsXML   `xml:"artifacts"`
 	Destination            destinationXML `xml:"destination"`
 	ExtraDestinations      extraDestsXML  `xml:"extra_destinations"`
@@ -162,11 +160,9 @@ func mapDeployment(raw *deploymentXML, cfg pfSenseConfig, identity *identityXML)
 		HostKeyIgnoreChanges:   parseBool(raw.HostKeyIgnoreChanges),
 		Timeout:                raw.ConnectTimeout,
 		CMDTimeout:             raw.CMDTimeout,
-		UseSFTP:                parseBool(raw.UseSFTP),
 		LegacySCPFallback:      parseBool(raw.LegacySCPFallback),
 		DisableConnectionReuse: parseBool(raw.DisableConnectionReuse),
 		AutoDeploy:             parseBool(raw.AutoDeploy),
-		ExtraSSHOpts:           raw.SSHOpts,
 		Destination:            mapDestination(raw.Destination),
 		PostUploadCmd:          raw.PostUploadCmd,
 		ValidationCmd:          raw.ValidationCmd,

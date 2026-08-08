@@ -144,14 +144,7 @@ $section->addInput(new Form_Input(
 	gettext('Host Key Fingerprint'),
 	'text',
 	$pconfig['host_key_fingerprint'] ?? ''
-))->setReadonly()->setHelp(gettext('SHA256 fingerprint of the remote host key. Automatically imported on first connect.'));
-
-$section->addInput(new Form_Checkbox(
-	'host_key_ignore_changes',
-	gettext('Ignore Changes'),
-	gettext('Accept changed host key fingerprints (disable strict host-key checking on mismatch)'),
-	($pconfig['host_key_ignore_changes'] ?? '') === 'on'
-));
+))->setHelp(gettext('Optional SHA256 fingerprint to pin. When empty, CertDeploy trusts the first host key and records it for later deployments.'));
 
 $form->add($section);
 
@@ -341,6 +334,13 @@ $form->add($section);
 
 $section = new Form_Section(gettext('Advanced'), 'advanced-panel', COLLAPSIBLE|SEC_CLOSED);
 
+$section->addInput(new Form_Checkbox(
+	'host_key_ignore_changes',
+	gettext('Accept Host Key Changes'),
+	gettext('Accept a changed host key on every deployment. Use only for targets that intentionally regenerate host keys.'),
+	($pconfig['host_key_ignore_changes'] ?? '') === 'on'
+));
+
 $section->addInput(new Form_Input(
 	'connect_timeout',
 	gettext('Connect Timeout'),
@@ -356,13 +356,6 @@ $section->addInput(new Form_Input(
 	$pconfig['cmd_timeout'] ?? '',
 	['min' => 0]
 ))->setHelp(gettext('Override default command timeout. Leave blank or set to 0 to use default.'));
-
-$section->addInput(new Form_Checkbox(
-	'use_sftp',
-	gettext('Use SFTP'),
-	gettext('Use SCP-over-SFTP mode'),
-	($pconfig['use_sftp'] ?? '') === 'on'
-));
 
 $section->addInput(new Form_Checkbox(
 	'legacy_scp_fallback',
@@ -384,20 +377,6 @@ $section->addInput(new Form_Checkbox(
 	gettext('Deploy automatically when certificate fingerprint changes'),
 	($pconfig['auto_deploy'] ?? '') === 'on'
 ));
-
-$section->addInput(new Form_Checkbox(
-	'readiness_check',
-	gettext('Readiness Check'),
-	gettext('Check target readiness before deployment'),
-	($pconfig['readiness_check'] ?? '') === 'on'
-));
-
-$section->addInput(new Form_Input(
-	'ssh_opts',
-	gettext('Extra SSH Options'),
-	'text',
-	$pconfig['ssh_opts'] ?? ''
-))->setHelp(gettext('Additional ssh/scp options as space-separated arguments.'));
 
 $form->add($section);
 

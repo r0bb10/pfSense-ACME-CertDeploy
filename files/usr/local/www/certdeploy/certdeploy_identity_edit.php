@@ -57,7 +57,7 @@ if ($_POST) {
 		$type = $_POST['key_type'] ?? 'ed25519';
 		$name = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['genkey_name'] ?? 'new');
 		$uuid = $_POST['identity_id'] ?? '';
-		if ($uuid === '') {
+		if (!certdeploy_identity_id_is_valid($uuid) || $uuid !== $id) {
 			header('Content-Type: application/json');
 			echo json_encode(['error' => gettext('Identity ID missing.')]);
 			exit;
@@ -77,10 +77,13 @@ if ($_POST) {
 		}
 
 		$key_type = $_POST['key_type'] ?? 'ed25519';
-		$private_key_path = $_POST['private_key_path'] ?? '';
+		$private_key_path = $is_new ? '' : ($pconfig['private_key_path'] ?? '');
 		$key_pem = $_POST['key_pem'] ?? '';
 		$new_key_pem = $_POST['new_key_pem'] ?? '';
 		$identity_id = $_POST['identity_id'] ?? '';
+		if ($is_new && $identity_id !== '' && !certdeploy_identity_id_is_valid($identity_id)) {
+			$input_errors[] = gettext('Invalid identity ID.');
+		}
 
 		if ($private_key_path === '' && $key_pem === '' && $new_key_pem === '') {
 			$input_errors[] = gettext('Either generate or import a private key.');
@@ -92,43 +95,55 @@ if ($_POST) {
 			$fingerprint = $_POST['fingerprint'] ?? '';
 			if ($new_key_pem !== '') {
 				$private_key_path = certdeploy_identity_save_import($name, $new_key_pem, $ident_id);
+				if ($private_key_path === false) {
+					$input_errors[] = gettext('Unable to save private key.');
+				}
+			}
+			if (empty($input_errors) && $new_key_pem !== '') {
 				@unlink($private_key_path . '.pub');
 				if ($public_key !== '') {
 					file_put_contents($private_key_path . '.pub', $public_key . "\n");
 					chmod($private_key_path . '.pub', 0644);
 				}
-			} elseif ($key_pem !== '') {
+			} elseif (empty($input_errors) && $key_pem !== '') {
 				$private_key_path = certdeploy_identity_save_import($name, $key_pem, $ident_id);
+				if ($private_key_path === false) {
+					$input_errors[] = gettext('Unable to save private key.');
+				}
+			}
+			if (empty($input_errors) && $key_pem !== '') {
 				@unlink($private_key_path . '.pub');
 				$public_key = certdeploy_identity_public_key($private_key_path);
 				$fingerprint = certdeploy_identity_fingerprint($private_key_path);
 			}
 
-			$ident = [
-				'id' => $ident_id,
-				'name' => $name,
-				'description' => $_POST['description'] ?? '',
-				'key_type' => $key_type,
-				'private_key_path' => $private_key_path,
-				'public_key' => $public_key,
-				'fingerprint' => $fingerprint,
-			];
+			if (empty($input_errors)) {
+				$ident = [
+					'id' => $ident_id,
+					'name' => $name,
+					'description' => $_POST['description'] ?? '',
+					'key_type' => $key_type,
+					'private_key_path' => $private_key_path,
+					'public_key' => $public_key,
+					'fingerprint' => $fingerprint,
+				];
 
-			if ($is_new) {
-				$idx = certdeploy_array_next_index('installedpackages/certdeploy/identities');
-			} else {
-				foreach (certdeploy_identities() as $i => $existing) {
-					if (($existing['id'] ?? '') === $id) {
-						$idx = $i;
-						break;
+				if ($is_new) {
+					$idx = certdeploy_array_next_index('installedpackages/certdeploy/identities');
+				} else {
+					foreach (certdeploy_identities() as $i => $existing) {
+						if (($existing['id'] ?? '') === $id) {
+							$idx = $i;
+							break;
+						}
 					}
 				}
+				config_set_path("installedpackages/certdeploy/identities/item/{$idx}", $ident);
+				write_config('CertDeploy identity saved');
+				certdeploy_sync();
+				header('Location: /certdeploy/certdeploy_deployments.php');
+				exit;
 			}
-			config_set_path("installedpackages/certdeploy/identities/item/{$idx}", $ident);
-			write_config('CertDeploy identity saved');
-			certdeploy_sync();
-			header('Location: /certdeploy/certdeploy_deployments.php');
-			exit;
 		}
 	}
 }
@@ -209,7 +224,7 @@ $section->addInput(new Form_Input(
 
 $form->add($section);
 
-$form->addGlobal(new Form_Input('identity_id', '', 'hidden', $pconfig['id'] ?? $id));
+$form->addGlobal(new Form_Input('identity_id', '', 'hidden', $pconfig['id'] ?? ($is_new ? certdeploy_uuid() : $id)));
 $form->addGlobal(new Form_Input('new_key_pem', '', 'hidden', ''));
 
 if ($is_new || ($pconfig['private_key_path'] ?? '') === '') {

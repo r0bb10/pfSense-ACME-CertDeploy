@@ -1,6 +1,8 @@
 package acme
 
 import (
+	"bytes"
+	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
@@ -153,6 +155,53 @@ func ParseCertificate(path string) (*x509.Certificate, error) {
 		return nil, fmt.Errorf("no PEM block found in %s", path)
 	}
 	return x509.ParseCertificate(block.Bytes)
+}
+
+// ValidateKeyPair verifies that the private key belongs to the certificate.
+func ValidateKeyPair(certPath, keyPath string) error {
+	cert, err := ParseCertificate(certPath)
+	if err != nil {
+		return fmt.Errorf("parse certificate: %w", err)
+	}
+	keyData, err := os.ReadFile(keyPath)
+	if err != nil {
+		return fmt.Errorf("read private key: %w", err)
+	}
+	block, _ := pem.Decode(keyData)
+	if block == nil {
+		return fmt.Errorf("no private key PEM block found in %s", keyPath)
+	}
+	key, err := parsePrivateKey(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("parse private key: %w", err)
+	}
+	certPublic, err := x509.MarshalPKIXPublicKey(cert.PublicKey)
+	if err != nil {
+		return fmt.Errorf("marshal certificate public key: %w", err)
+	}
+	keyPublic, err := x509.MarshalPKIXPublicKey(key.Public())
+	if err != nil {
+		return fmt.Errorf("marshal private key public key: %w", err)
+	}
+	if !bytes.Equal(certPublic, keyPublic) {
+		return fmt.Errorf("certificate and private key do not match")
+	}
+	return nil
+}
+
+func parsePrivateKey(der []byte) (crypto.Signer, error) {
+	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
+		if signer, ok := key.(crypto.Signer); ok {
+			return signer, nil
+		}
+	}
+	if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
+		return key, nil
+	}
+	if key, err := x509.ParseECPrivateKey(der); err == nil {
+		return key, nil
+	}
+	return nil, fmt.Errorf("unsupported private key format")
 }
 
 // FilesStable returns true if the certificate files have not changed over two reads.

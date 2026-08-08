@@ -34,7 +34,10 @@ func NewManager(path string) *Manager {
 func (m *Manager) Load() (*State, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.load()
+}
 
+func (m *Manager) load() (*State, error) {
 	state := &State{Deployments: map[string]DeploymentState{}}
 	data, err := os.ReadFile(m.path)
 	if err != nil {
@@ -55,7 +58,10 @@ func (m *Manager) Load() (*State, error) {
 func (m *Manager) Save(state *State) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.save(state)
+}
 
+func (m *Manager) save(state *State) error {
 	if err := os.MkdirAll(filepath.Dir(m.path), 0750); err != nil {
 		return err
 	}
@@ -70,29 +76,43 @@ func (m *Manager) Save(state *State) error {
 	return os.Rename(tmp, m.path)
 }
 
-func (m *Manager) UpdateDeployment(id string, ds DeploymentState) error {
-	state, err := m.Load()
+func (m *Manager) UpdateDeployment(id string, ds DeploymentState, successful bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	state, err := m.load()
 	if err != nil {
 		return err
 	}
+	if !successful {
+		previous := state.Deployments[id]
+		ds.LastDeployedFingerprint = previous.LastDeployedFingerprint
+		ds.LastDeployedTime = previous.LastDeployedTime
+		if ds.HostKeyFingerprint == "" {
+			ds.HostKeyFingerprint = previous.HostKeyFingerprint
+		}
+	}
 	state.Deployments[id] = ds
-	return m.Save(state)
+	return m.save(state)
 }
 
 func (m *Manager) UpdateLastScanTime(t int64) error {
-	state, err := m.Load()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	state, err := m.load()
 	if err != nil {
 		return err
 	}
 	state.LastScanTime = t
-	return m.Save(state)
+	return m.save(state)
 }
 
 func (m *Manager) UpdateLastReconcileTime(t int64) error {
-	state, err := m.Load()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	state, err := m.load()
 	if err != nil {
 		return err
 	}
 	state.LastReconcileTime = t
-	return m.Save(state)
+	return m.save(state)
 }

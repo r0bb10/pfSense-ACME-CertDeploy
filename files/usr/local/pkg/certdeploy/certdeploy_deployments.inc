@@ -109,6 +109,10 @@ function certdeploy_deployment_validate(&$post, &$input_errors) {
 			$input_errors[] = gettext('A valid ACME certificate must be selected.');
 		}
 	}
+	$fingerprint = trim($post['host_key_fingerprint'] ?? '');
+	if ($fingerprint !== '' && !preg_match('/^SHA256:[A-Za-z0-9+\/]{43}=?$/', $fingerprint)) {
+		$input_errors[] = gettext('Host key fingerprint must be a valid SHA256 fingerprint.');
+	}
 
 	if (($post['host'] ?? '') === '') {
 		$input_errors[] = gettext('Host is required.');
@@ -123,6 +127,7 @@ function certdeploy_deployment_validate(&$post, &$input_errors) {
 	}
 
 	$artifacts = certdeploy_parse_repeatables($post, ['artifact_source', 'artifact_filename']);
+	$sources = certdeploy_deployment_artifact_sources($cert);
 	foreach ($artifacts as $a) {
 		if (($a['artifact_source'] ?? '') === '' && ($a['artifact_filename'] ?? '') === '') {
 			continue;
@@ -132,6 +137,13 @@ function certdeploy_deployment_validate(&$post, &$input_errors) {
 		}
 		if (($a['artifact_filename'] ?? '') === '') {
 			$input_errors[] = gettext('Artifact filename is required.');
+		}
+		if (($a['artifact_source'] ?? '') !== '' && !isset($sources[$a['artifact_source']])) {
+			$input_errors[] = gettext('Artifact source must belong to the selected ACME certificate.');
+		}
+		$filename = $a['artifact_filename'] ?? '';
+		if ($filename !== '' && ($filename !== basename($filename) || $filename === '.' || $filename === '..')) {
+			$input_errors[] = gettext('Artifact filename must be a filename, not a path.');
 		}
 	}
 
@@ -173,12 +185,9 @@ function certdeploy_deployment_build($post, $old = []) {
 	$dep['host_key_ignore_changes'] = empty($post['host_key_ignore_changes']) ? 'off' : 'on';
 	$dep['connect_timeout'] = is_numericint($post['connect_timeout'] ?? '') ? (int)$post['connect_timeout'] : 0;
 	$dep['cmd_timeout'] = is_numericint($post['cmd_timeout'] ?? '') ? (int)$post['cmd_timeout'] : 0;
-	$dep['use_sftp'] = empty($post['use_sftp']) ? 'off' : 'on';
 	$dep['legacy_scp_fallback'] = empty($post['legacy_scp_fallback']) ? 'off' : 'on';
 	$dep['disable_connection_reuse'] = empty($post['disable_connection_reuse']) ? 'off' : 'on';
-	$dep['ssh_opts'] = $post['ssh_opts'] ?? '';
 	$dep['auto_deploy'] = empty($post['auto_deploy']) ? 'off' : 'on';
-	$dep['readiness_check'] = empty($post['readiness_check']) ? 'off' : 'on';
 
 	$dep['artifacts'] = ['row' => []];
 	$artifacts = certdeploy_parse_repeatables($post, ['artifact_source', 'artifact_filename']);
