@@ -170,24 +170,15 @@ $cert_files = ($pconfig['certificate_name'] ?? '') !== '' ? certdeploy_acme_cert
 ?>
 <div id="artifact_template" class="form-group artifact-row" style="display:none">
 	<label class="col-sm-2 control-label"></label>
-	<div class="col-sm-2">
+	<div class="col-sm-3">
 		<select class="form-control artifact-source" name="artifact_source[]">
 			<option value=""><?=gettext('Select source')?></option>
 		</select>
 	</div>
-	<div class="col-sm-2">
+	<div class="col-sm-5">
 		<input type="text" class="form-control artifact-filename" name="artifact_filename[]" placeholder="<?=gettext('Remote filename')?>" />
 	</div>
 	<div class="col-sm-2">
-		<input type="text" class="form-control artifact-owner" name="artifact_owner[]" placeholder="<?=gettext('Owner')?>" />
-	</div>
-	<div class="col-sm-2">
-		<input type="text" class="form-control artifact-group" name="artifact_file_group[]" placeholder="<?=gettext('Group')?>" />
-	</div>
-	<div class="col-sm-1">
-		<input type="text" class="form-control artifact-mode" name="artifact_mode[]" placeholder="<?=gettext('Mode')?>" />
-	</div>
-	<div class="col-sm-1">
 		<button type="button" class="btn btn-warning btn-sm delete-artifact"><i class="fa-solid fa-trash-can"></i> <?=gettext('Delete')?></button>
 	</div>
 </div>
@@ -206,85 +197,117 @@ foreach ($artifacts as $c => $art) {
 		certdeploy_deployment_artifact_sources($pconfig['certificate_name'] ?? '')
 	);
 	$source_select->setAttribute('class', 'form-control artifact-source');
-	$group->add($source_select)->setWidth(2);
+	$group->add($source_select)->setWidth(3);
 
 	$group->add(new Form_Input(
 		'artifact_filename' . $c,
-		gettext('Filename'),
+		gettext('Remote filename'),
 		'text',
 		$art['filename'] ?? ''
-	))->setAttribute('class', 'form-control artifact-filename')->setWidth(2);
-
-	$group->add(new Form_Input(
-		'artifact_owner' . $c,
-		gettext('Owner'),
-		'text',
-		$art['owner'] ?? ''
-	))->setAttribute('class', 'form-control artifact-owner')->setWidth(2);
-
-	$group->add(new Form_Input(
-		'artifact_file_group' . $c,
-		gettext('Group'),
-		'text',
-		$art['file_group'] ?? ''
-	))->setAttribute('class', 'form-control artifact-group')->setWidth(2);
-
-	$group->add(new Form_Input(
-		'artifact_mode' . $c,
-		gettext('Mode'),
-		'text',
-		$art['mode'] ?? ''
-	))->setAttribute('class', 'form-control artifact-mode')->setWidth(1);
+	))->setAttribute('class', 'form-control artifact-filename')->setWidth(5);
 
 	$group->add((new Form_Button(
 		'delete_artifact' . $c,
 		gettext('Delete'),
 		null,
 		'fa-solid fa-trash-can'
-	))->addClass('btn-warning btn-sm delete-artifact')->setAttribute('type', 'button')->setWidth(1));
+	))->addClass('btn-warning btn-sm delete-artifact')->setAttribute('type', 'button')->setWidth(2));
 
 	$section->add($group);
 }
 
 // Add Artifact button.
-$section->addInput((new Form_Button(
+$group = new Form_Group('');
+$group->add((new Form_Button(
 	'add_artifact',
 	gettext('Add Artifact'),
 	null,
 	'fa-solid fa-plus'
 ))->addClass('btn-success btn-sm')->setAttribute('type', 'button')->setAttribute('id', 'add_artifact'));
+$section->add($group);
 
-// Destination (single, required).
-$dest = $pconfig['destination'] ?? [];
-$group = new Form_Group(gettext('Destination'));
-$group->add(new Form_Input(
-	'destination_directory',
-	gettext('Directory'),
-	'text',
-	$dest['directory'] ?? ''
-))->setHelp(gettext('Remote directory where files will be placed. Created if missing.'))->setWidth(3);
+// Hidden template for new destination rows.
+?>
+<div id="destination_template" class="form-group destination-row" style="display:none">
+	<label class="col-sm-2 control-label"></label>
+	<div class="col-sm-3">
+		<input type="text" class="form-control destination-directory" name="destination_directory[]" placeholder="<?=gettext('Remote directory')?>" />
+	</div>
+	<div class="col-sm-2">
+		<input type="text" class="form-control destination-owner" name="destination_owner[]" placeholder="<?=gettext('Owner')?>" />
+	</div>
+	<div class="col-sm-2">
+		<input type="text" class="form-control destination-group" name="destination_group[]" placeholder="<?=gettext('Group')?>" />
+	</div>
+	<div class="col-sm-1">
+		<input type="text" class="form-control destination-mode" name="destination_mode[]" placeholder="<?=gettext('Mode')?>" />
+	</div>
+	<div class="col-sm-2">
+		<button type="button" class="btn btn-warning btn-sm delete-destination"><i class="fa-solid fa-trash-can"></i> <?=gettext('Delete')?></button>
+	</div>
+</div>
+<?php
 
-$group->add(new Form_Input(
-	'destination_dir_owner',
-	gettext('Owner'),
-	'text',
-	$dest['dir_owner'] ?? ''
-))->setWidth(2);
+// Existing destination rows.
+$dest_rows = [];
+$dep_dest = $pconfig['destination'] ?? [];
+if (!empty($dep_dest['directory'])) {
+	$dest_rows[] = $dep_dest;
+}
+$dest_rows = array_merge($dest_rows, $pconfig['extra_destinations']['item'] ?? []);
 
-$group->add(new Form_Input(
-	'destination_dir_group',
-	gettext('Group'),
-	'text',
-	$dest['dir_group'] ?? ''
-))->setWidth(2);
+foreach ($dest_rows as $c => $drow) {
+	// Keep the label on the first row, blank on the rest.
+	$group = new Form_Group($c === 0 ? gettext('Destinations') : '');
+	$group->addClass('destination-row');
 
-$group->add(new Form_Input(
-	'destination_dir_mode',
-	gettext('Mode'),
-	'text',
-	$dest['dir_mode'] ?? ''
-))->setWidth(1);
+	$group->add(new Form_Input(
+		'destination_directory' . $c,
+		gettext('Remote directory'),
+		'text',
+		$drow['directory'] ?? ''
+	))->setAttribute('class', 'form-control destination-directory')->setWidth(3);
 
+	$group->add(new Form_Input(
+		'destination_owner' . $c,
+		gettext('Owner'),
+		'text',
+		$drow['owner'] ?? ''
+	))->setAttribute('class', 'form-control destination-owner')->setWidth(2);
+
+	$group->add(new Form_Input(
+		'destination_group' . $c,
+		gettext('Group'),
+		'text',
+		$drow['group'] ?? ''
+	))->setAttribute('class', 'form-control destination-group')->setWidth(2);
+
+	$group->add(new Form_Input(
+		'destination_mode' . $c,
+		gettext('Mode'),
+		'text',
+		$drow['mode'] ?? ''
+	))->setAttribute('class', 'form-control destination-mode')->setWidth(1);
+
+	$group->add((new Form_Button(
+		'delete_destination' . $c,
+		gettext('Delete'),
+		null,
+		'fa-solid fa-trash-can'
+	))->addClass('btn-warning btn-sm delete-destination')->setAttribute('type', 'button')->setWidth(2));
+
+	$section->add($group);
+}
+
+// Add Destination button.
+$group = new Form_Group('');
+$group->add((new Form_Button(
+	'add_destination',
+	gettext('Add Destination'),
+	null,
+	'fa-solid fa-plus'
+))->addClass('btn-success btn-sm')->setAttribute('type', 'button')->setAttribute('id', 'add_destination')
+)->setHelp(gettext('The first destination is uploaded via SCP; additional destinations are copied from it on the target.'));
 $section->add($group);
 
 $form->add($section);
@@ -399,10 +422,7 @@ function certdeploy_populate_sources($select, selected) {
 		var $opt = $('<option></option>')
 			.attr('value', basename)
 			.text(info.label)
-			.data('filename', basename)
-			.data('owner', info.owner)
-			.data('group', info.group)
-			.data('mode', info.mode);
+			.data('filename', basename);
 		if (basename === selected) {
 			$opt.prop('selected', true);
 		}
@@ -419,46 +439,64 @@ function certdeploy_autofill_row($row) {
 	if ($filename.val() === '') {
 		$filename.val($opt.data('filename'));
 	}
-	var $owner = $row.find('.artifact-owner');
-	if ($owner.val() === '') {
-		$owner.val($opt.data('owner'));
-	}
-	var $group = $row.find('.artifact-group');
-	if ($group.val() === '') {
-		$group.val($opt.data('group'));
-	}
-	var $mode = $row.find('.artifact-mode');
-	if ($mode.val() === '') {
-		$mode.val($opt.data('mode'));
-	}
-}
-
-function certdeploy_next_artifact_index() {
-	var max = -1;
-	$('.artifact-source').each(function() {
-		var name = $(this).attr('name');
-		var m = name.match(/artifact_source(\d+)$/);
-		if (m) {
-			var idx = parseInt(m[1], 10);
-			if (idx > max) {
-				max = idx;
-			}
-		}
-	});
-	return max + 1;
 }
 
 function certdeploy_add_artifact_row() {
 	var $template = $('#artifact_template').clone();
 	$template.removeAttr('id').show();
-	var idx = certdeploy_next_artifact_index();
-	$template.find('.artifact-source').attr('name', 'artifact_source' + idx);
-	$template.find('.artifact-filename').attr('name', 'artifact_filename' + idx);
-	$template.find('.artifact-owner').attr('name', 'artifact_owner' + idx);
-	$template.find('.artifact-group').attr('name', 'artifact_file_group' + idx);
-	$template.find('.artifact-mode').attr('name', 'artifact_mode' + idx);
+	$template.find('.artifact-source').attr('name', 'artifact_source[]');
+	$template.find('.artifact-filename').attr('name', 'artifact_filename[]');
 	certdeploy_populate_sources($template.find('.artifact-source'), '');
-	$('#add_artifact').closest('.form-group').before($template);
+	var $last = $('.artifact-row').not('#artifact_template').filter(':visible').last();
+	if ($last.length) {
+		$last.after($template);
+	} else {
+		$('#add_artifact').closest('.form-group').before($template);
+	}
+	certdeploy_update_artifact_indexes();
+}
+
+// Re-number artifact row inputs sequentially (0, 1, 2, ...) and keep the
+// label on the first row only, matching the first/last row markers.
+function certdeploy_update_artifact_indexes() {
+	var idx = 0;
+	$('.artifact-row').not('#artifact_template').each(function() {
+		var $row = $(this);
+		$row.find('.artifact-source').attr('name', 'artifact_source' + idx);
+		$row.find('.artifact-filename').attr('name', 'artifact_filename' + idx);
+		$row.find('label').text(idx === 0 ? '<?=gettext("Artifacts")?>' : '');
+		idx++;
+	});
+}
+
+function certdeploy_add_destination_row() {
+	var $template = $('#destination_template').clone();
+	$template.removeAttr('id').show();
+	$template.find('.destination-directory').attr('name', 'destination_directory[]');
+	$template.find('.destination-owner').attr('name', 'destination_owner[]');
+	$template.find('.destination-group').attr('name', 'destination_group[]');
+	$template.find('.destination-mode').attr('name', 'destination_mode[]');
+	var $last = $('.destination-row').not('#destination_template').filter(':visible').last();
+	if ($last.length) {
+		$last.after($template);
+	} else {
+		$('#add_destination').closest('.form-group').before($template);
+	}
+	certdeploy_update_destination_indexes();
+}
+
+// Re-number destination row inputs sequentially and keep the label on the first row only.
+function certdeploy_update_destination_indexes() {
+	var idx = 0;
+	$('.destination-row').not('#destination_template').each(function() {
+		var $row = $(this);
+		$row.find('.destination-directory').attr('name', 'destination_directory' + idx);
+		$row.find('.destination-owner').attr('name', 'destination_owner' + idx);
+		$row.find('.destination-group').attr('name', 'destination_group' + idx);
+		$row.find('.destination-mode').attr('name', 'destination_mode' + idx);
+		$row.find('label').text(idx === 0 ? '<?=gettext("Destinations")?>' : '');
+		idx++;
+	});
 }
 
 events.push(function() {
@@ -499,8 +537,24 @@ events.push(function() {
 		certdeploy_add_artifact_row();
 	});
 
+	$('#add_destination').click(function() {
+		certdeploy_add_destination_row();
+	});
+
 	$(document).on('click', '.delete-artifact', function() {
+		if ($('.artifact-row').length <= 1) {
+			return;
+		}
 		$(this).closest('.artifact-row').remove();
+		certdeploy_update_artifact_indexes();
+	});
+
+	$(document).on('click', '.delete-destination', function() {
+		if ($('.destination-row').length <= 1) {
+			return;
+		}
+		$(this).closest('.destination-row').remove();
+		certdeploy_update_destination_indexes();
 	});
 });
 //]]>

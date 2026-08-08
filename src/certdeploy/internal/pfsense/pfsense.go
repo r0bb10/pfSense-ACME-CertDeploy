@@ -54,6 +54,7 @@ type deploymentXML struct {
 	SSHOpts                string         `xml:"ssh_opts"`
 	Artifacts              artifactsXML   `xml:"artifacts"`
 	Destination            destinationXML `xml:"destination"`
+	ExtraDestinations      extraDestsXML  `xml:"extra_destinations"`
 	PostUploadCmd          string         `xml:"post_upload_cmd"`
 	ValidationCmd          string         `xml:"validation_cmd"`
 	ReloadCmd              string         `xml:"reload_cmd"`
@@ -64,8 +65,9 @@ type artifactsXML struct {
 }
 
 type artifactXML struct {
-	Source    string `xml:"source"`
-	Filename  string `xml:"filename"`
+	Source   string `xml:"source"`
+	Filename string `xml:"filename"`
+	// Deprecated: per-artifact perms moved to the destination triple.
 	Owner     string `xml:"owner"`
 	FileGroup string `xml:"file_group"`
 	Mode      string `xml:"mode"`
@@ -73,9 +75,17 @@ type artifactXML struct {
 
 type destinationXML struct {
 	Directory string `xml:"directory"`
-	DirOwner  string `xml:"dir_owner"`
-	DirGroup  string `xml:"dir_group"`
-	DirMode   string `xml:"dir_mode"`
+	Owner     string `xml:"owner"`
+	Group     string `xml:"group"`
+	Mode      string `xml:"mode"`
+	// Deprecated: legacy dir-level fields, kept for backward compat.
+	DirOwner string `xml:"dir_owner"`
+	DirGroup string `xml:"dir_group"`
+	DirMode  string `xml:"dir_mode"`
+}
+
+type extraDestsXML struct {
+	Items []destinationXML `xml:"item"`
 }
 
 type acmeXML struct {
@@ -131,6 +141,14 @@ func LoadDeployment(configPath, deploymentID string) (deploy.Deployment, error) 
 		return empty, fmt.Errorf("identity not found: %s", raw.IdentityID)
 	}
 
+	d := mapDeployment(raw, cfg, identity)
+
+	return d, nil
+}
+
+// mapDeployment converts a parsed deploymentXML into a deploy.Deployment,
+// resolving legacy permission fields where the new ones are unset.
+func mapDeployment(raw *deploymentXML, cfg pfSenseConfig, identity *identityXML) deploy.Deployment {
 	d := deploy.Deployment{
 		ID:                     raw.ID,
 		Name:                   raw.Name,
@@ -149,32 +167,45 @@ func LoadDeployment(configPath, deploymentID string) (deploy.Deployment, error) 
 		DisableConnectionReuse: parseBool(raw.DisableConnectionReuse),
 		AutoDeploy:             parseBool(raw.AutoDeploy),
 		ExtraSSHOpts:           raw.SSHOpts,
-		Destination: deploy.Destination{
-			Directory: raw.Destination.Directory,
-			DirOwner:  raw.Destination.DirOwner,
-			DirGroup:  raw.Destination.DirGroup,
-			DirMode:   raw.Destination.DirMode,
-		},
-		PostUploadCmd: raw.PostUploadCmd,
-		ValidationCmd: raw.ValidationCmd,
-		ReloadCmd:     raw.ReloadCmd,
+		Destination:            mapDestination(raw.Destination),
+		PostUploadCmd:          raw.PostUploadCmd,
+		ValidationCmd:          raw.ValidationCmd,
+		ReloadCmd:              raw.ReloadCmd,
 	}
 
 	for _, art := range raw.Artifacts.Rows {
 		d.Artifacts = append(d.Artifacts, deploy.Artifact{
-			Source:    art.Source,
-			Filename:  art.Filename,
-			Owner:     art.Owner,
-			FileGroup: art.FileGroup,
-			Mode:      art.Mode,
+			Source:   art.Source,
+			Filename: art.Filename,
 		})
 	}
-
+	for _, ed := range raw.ExtraDestinations.Items {
+		d.ExtraDestinations = append(d.ExtraDestinations, mapDestination(ed))
+	}
 	if raw.CertificateName != "" {
 		d.CertificateBase = certificateBase(cfg.InstalledPkgs.ACME, raw.CertificateName)
 	}
 
-	return d, nil
+	return d
+}
+
+// mapDestination maps a destinationXML into a deploy.Destination, carrying the
+// per-file permutation over from legacy dir-level fields when not set.
+func mapDestination(x destinationXML) deploy.Destination {
+	d := deploy.Destination{Directory: x.Directory}
+	d.Owner = x.Owner
+	if d.Owner == "" {
+		d.Owner = x.DirOwner
+	}
+	d.Group = x.Group
+	if d.Group == "" {
+		d.Group = x.DirGroup
+	}
+	d.Mode = x.Mode
+	if d.Mode == "" {
+		d.Mode = x.DirMode
+	}
+	return d
 }
 
 func certificateBase(acme acmeXML, name string) string {
@@ -213,46 +244,7 @@ func LoadAllDeployments(configPath string) ([]deploy.Deployment, error) {
 			continue
 		}
 
-		d := deploy.Deployment{
-			ID:                     raw.ID,
-			Name:                   raw.Name,
-			Enabled:                parseBool(raw.Enabled),
-			CertificateName:        raw.CertificateName,
-			Host:                   raw.Host,
-			Port:                   raw.Port,
-			User:                   identity.Name,
-			IdentityPath:           identity.PrivateKeyPath,
-			HostKeyFingerprint:     raw.HostKeyFingerprint,
-			HostKeyIgnoreChanges:   parseBool(raw.HostKeyIgnoreChanges),
-			Timeout:                raw.ConnectTimeout,
-			CMDTimeout:             raw.CMDTimeout,
-			UseSFTP:                parseBool(raw.UseSFTP),
-			LegacySCPFallback:      parseBool(raw.LegacySCPFallback),
-			DisableConnectionReuse: parseBool(raw.DisableConnectionReuse),
-			AutoDeploy:             parseBool(raw.AutoDeploy),
-			ExtraSSHOpts:           raw.SSHOpts,
-			Destination: deploy.Destination{
-				Directory: raw.Destination.Directory,
-				DirOwner:  raw.Destination.DirOwner,
-				DirGroup:  raw.Destination.DirGroup,
-				DirMode:   raw.Destination.DirMode,
-			},
-			PostUploadCmd: raw.PostUploadCmd,
-			ValidationCmd: raw.ValidationCmd,
-			ReloadCmd:     raw.ReloadCmd,
-		}
-		for _, art := range raw.Artifacts.Rows {
-			d.Artifacts = append(d.Artifacts, deploy.Artifact{
-				Source:    art.Source,
-				Filename:  art.Filename,
-				Owner:     art.Owner,
-				FileGroup: art.FileGroup,
-				Mode:      art.Mode,
-			})
-		}
-		if raw.CertificateName != "" {
-			d.CertificateBase = certificateBase(cfg.InstalledPkgs.ACME, raw.CertificateName)
-		}
+		d := mapDeployment(raw, cfg, identity)
 		deployments = append(deployments, d)
 	}
 

@@ -122,7 +122,7 @@ function certdeploy_deployment_validate(&$post, &$input_errors) {
 		$input_errors[] = gettext('A valid SSH identity must be selected.');
 	}
 
-	$artifacts = certdeploy_parse_repeatables($post, ['artifact_source', 'artifact_filename', 'artifact_owner', 'artifact_file_group', 'artifact_mode']);
+	$artifacts = certdeploy_parse_repeatables($post, ['artifact_source', 'artifact_filename']);
 	foreach ($artifacts as $a) {
 		if (($a['artifact_source'] ?? '') === '' && ($a['artifact_filename'] ?? '') === '') {
 			continue;
@@ -132,6 +132,13 @@ function certdeploy_deployment_validate(&$post, &$input_errors) {
 		}
 		if (($a['artifact_filename'] ?? '') === '') {
 			$input_errors[] = gettext('Artifact filename is required.');
+		}
+	}
+
+	$destinations = certdeploy_parse_repeatables($post, ['destination_directory', 'destination_owner', 'destination_group', 'destination_mode']);
+	foreach ($destinations as $d) {
+		if (($d['destination_directory'] ?? '') === '') {
+			$input_errors[] = gettext('Destination directory is required.');
 		}
 	}
 
@@ -174,7 +181,7 @@ function certdeploy_deployment_build($post, $old = []) {
 	$dep['readiness_check'] = empty($post['readiness_check']) ? 'off' : 'on';
 
 	$dep['artifacts'] = ['row' => []];
-	$artifacts = certdeploy_parse_repeatables($post, ['artifact_source', 'artifact_filename', 'artifact_owner', 'artifact_file_group', 'artifact_mode']);
+	$artifacts = certdeploy_parse_repeatables($post, ['artifact_source', 'artifact_filename']);
 	foreach ($artifacts as $a) {
 		if (($a['artifact_source'] ?? '') === '' && ($a['artifact_filename'] ?? '') === '') {
 			continue;
@@ -182,18 +189,31 @@ function certdeploy_deployment_build($post, $old = []) {
 		$dep['artifacts']['row'][] = [
 			'source' => $a['artifact_source'],
 			'filename' => $a['artifact_filename'],
-			'owner' => $a['artifact_owner'] ?? '',
-			'file_group' => $a['artifact_file_group'] ?? '',
-			'mode' => $a['artifact_mode'] ?? '',
 		];
 	}
 
+	// First destination row is the primary (SCP upload); the rest are extra
+	// destinations copied on the target.
+	$destinations = certdeploy_parse_repeatables($post, ['destination_directory', 'destination_owner', 'destination_group', 'destination_mode']);
+	$destinations = array_values(array_filter($destinations, function ($d) {
+		return ($d['destination_directory'] ?? '') !== '';
+	}));
+	$primary = array_shift($destinations);
 	$dep['destination'] = [
-		'directory' => $post['destination_directory'] ?? '',
-		'dir_owner' => $post['destination_dir_owner'] ?? '',
-		'dir_group' => $post['destination_dir_group'] ?? '',
-		'dir_mode' => $post['destination_dir_mode'] ?? '',
+		'directory' => $primary['destination_directory'] ?? '',
+		'owner' => $primary['destination_owner'] ?? '',
+		'group' => $primary['destination_group'] ?? '',
+		'mode' => $primary['destination_mode'] ?? '',
 	];
+	$dep['extra_destinations'] = ['item' => []];
+	foreach ($destinations as $d) {
+		$dep['extra_destinations']['item'][] = [
+			'directory' => $d['destination_directory'],
+			'owner' => $d['destination_owner'] ?? '',
+			'group' => $d['destination_group'] ?? '',
+			'mode' => $d['destination_mode'] ?? '',
+		];
+	}
 
 	$dep['post_upload_cmd'] = $post['post_upload_cmd'] ?? '';
 	$dep['validation_cmd'] = $post['validation_cmd'] ?? '';

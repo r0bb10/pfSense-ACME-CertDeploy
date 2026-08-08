@@ -28,19 +28,17 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, sm *state.Manager, runne
 
 // Artifact mirrors the config.xml artifact row.
 type Artifact struct {
-	Source    string // ACME filename, e.g. "sp8t.com.crt"
-	Filename  string // Remote filename
-	Owner     string
-	FileGroup string
-	Mode      string
+	Source   string // ACME filename, e.g. "sp8t.com.crt"
+	Filename string // Remote filename
 }
 
-// Destination mirrors the config.xml destination item.
+// Destination mirrors the config.xml destination item. Owner/Group/Mode are
+// applied to both the directory and the files placed in it.
 type Destination struct {
 	Directory string
-	DirOwner  string
-	DirGroup  string
-	DirMode   string
+	Owner     string
+	Group     string
+	Mode      string
 }
 
 // Deployment mirrors the config.xml deployment item.
@@ -65,6 +63,7 @@ type Deployment struct {
 	ExtraSSHOpts           string
 	Artifacts              []Artifact
 	Destination            Destination
+	ExtraDestinations      []Destination
 	PostUploadCmd          string
 	ValidationCmd          string
 	ReloadCmd              string
@@ -132,72 +131,59 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		opts.ControlSocket = socket
 	}
 
-	dest := d.Destination
-	hasFiles := dest.Directory != "" && len(d.Artifacts) > 0
+	primary := d.Destination
+	hasFiles := primary.Directory != "" && len(d.Artifacts) > 0
 
-	// 1. Create remote directory and apply ownership/mode when files are requested.
+	// applyPerms chown/chmods path according to the destination triple.
+	applyPerms := func(path, owner, group, mode, what string) error {
+		if owner != "" || group != "" {
+			o := owner
+			if o == "" {
+				o = "root"
+			}
+			g := group
+			if g == "" {
+				g = o
+			}
+			cmd := fmt.Sprintf("chown %s:%s %s", o, g, shellQuote(path))
+			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+				return fmt.Errorf("%s: %w", what, err)
+			}
+		}
+		if mode != "" {
+			cmd := fmt.Sprintf("chmod %s %s", mode, shellQuote(path))
+			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+				return fmt.Errorf("%s: %w", what, err)
+			}
+		}
+		return nil
+	}
+
+	// 1. Create primary remote directory and apply perms when files are requested.
 	if hasFiles {
-		log.Debug("creating remote directory", slog.String("directory", dest.Directory))
-		cmd := fmt.Sprintf("mkdir -p %s", shellQuote(dest.Directory))
+		log.Debug("creating remote directory", slog.String("directory", primary.Directory))
+		cmd := fmt.Sprintf("mkdir -p %s", shellQuote(primary.Directory))
 		if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
 			return fail("create remote directory", err)
 		}
-		if dest.DirMode != "" {
-			log.Debug("setting directory mode", slog.String("directory", dest.Directory), slog.String("mode", dest.DirMode))
-			cmd = fmt.Sprintf("chmod %s %s", dest.DirMode, shellQuote(dest.Directory))
-			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
-				return fail("chmod remote directory", err)
-			}
-		}
-		if dest.DirOwner != "" || dest.DirGroup != "" {
-			owner := dest.DirOwner
-			if owner == "" {
-				owner = "root"
-			}
-			group := dest.DirGroup
-			if group == "" {
-				group = owner
-			}
-			log.Debug("setting directory ownership", slog.String("directory", dest.Directory), slog.String("owner", owner), slog.String("group", group))
-			cmd = fmt.Sprintf("chown %s:%s %s", owner, group, shellQuote(dest.Directory))
-			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
-				return fail("chown remote directory", err)
-			}
+		if err := applyPerms(primary.Directory, primary.Owner, primary.Group, primary.Mode, "chown remote directory"); err != nil {
+			return fail("set remote directory perms", err)
 		}
 	}
 
-	// 2. Upload artifacts to temporary names and apply ownership/mode.
+	// 2. Upload artifacts to primary destination under temporary names and apply perms.
 	if hasFiles {
 		for _, art := range d.Artifacts {
 			src := filepath.Join(d.CertificateBase, art.Source)
-			final := filepath.Join(dest.Directory, art.Filename)
+			final := filepath.Join(primary.Directory, art.Filename)
 			// Use a stable temp name pattern.
 			tmp := final + ".certdeploy-tmp"
 			log.Debug("uploading artifact", slog.String("source", src), slog.String("destination", tmp))
 			if err := e.ssh.CopyFile(ctx, opts, src, tmp); err != nil {
 				return fail("upload artifact "+art.Filename, err)
 			}
-			if art.Mode != "" {
-				log.Debug("setting artifact mode", slog.String("file", art.Filename), slog.String("mode", art.Mode))
-				cmd := fmt.Sprintf("chmod %s %s", art.Mode, shellQuote(tmp))
-				if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
-					return fail("chmod artifact "+art.Filename, err)
-				}
-			}
-			if art.Owner != "" || art.FileGroup != "" {
-				owner := art.Owner
-				if owner == "" {
-					owner = "root"
-				}
-				group := art.FileGroup
-				if group == "" {
-					group = owner
-				}
-				log.Debug("setting artifact ownership", slog.String("file", art.Filename), slog.String("owner", owner), slog.String("group", group))
-				cmd := fmt.Sprintf("chown %s:%s %s", owner, group, shellQuote(tmp))
-				if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
-					return fail("chown artifact "+art.Filename, err)
-				}
+			if err := applyPerms(tmp, primary.Owner, primary.Group, primary.Mode, "set artifact perms"); err != nil {
+				return fail("set artifact perms "+art.Filename, err)
 			}
 		}
 	}
@@ -210,10 +196,10 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		}
 	}
 
-	// 4. Rename temp files into place.
+	// 4. Rename primary temp files into place.
 	if hasFiles {
 		for _, art := range d.Artifacts {
-			final := filepath.Join(dest.Directory, art.Filename)
+			final := filepath.Join(primary.Directory, art.Filename)
 			tmp := final + ".certdeploy-tmp"
 			log.Debug("moving artifact into place", slog.String("file", art.Filename))
 			cmd := fmt.Sprintf("mv -f %s %s", shellQuote(tmp), shellQuote(final))
@@ -223,7 +209,42 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		}
 	}
 
-	// 5. Validation command.
+	// 5. Extra destinations: copy the deployed files on the target.
+	for _, extra := range d.ExtraDestinations {
+		if extra.Directory == "" {
+			continue
+		}
+		log.Debug("preparing extra destination", slog.String("directory", extra.Directory))
+		cmd := fmt.Sprintf("mkdir -p %s", shellQuote(extra.Directory))
+		if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+			return fail("create extra destination "+extra.Directory, err)
+		}
+		if err := applyPerms(extra.Directory, extra.Owner, extra.Group, extra.Mode, "chown extra destination"); err != nil {
+			return fail("set extra destination perms "+extra.Directory, err)
+		}
+		if !hasFiles {
+			continue
+		}
+		for _, art := range d.Artifacts {
+			src := filepath.Join(primary.Directory, art.Filename)
+			final := filepath.Join(extra.Directory, art.Filename)
+			tmp := final + ".certdeploy-tmp"
+			log.Debug("copying artifact to extra destination", slog.String("source", src), slog.String("destination", tmp))
+			cmd := fmt.Sprintf("cp %s %s", shellQuote(src), shellQuote(tmp))
+			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+				return fail("copy artifact "+art.Filename, err)
+			}
+			if err := applyPerms(tmp, extra.Owner, extra.Group, extra.Mode, "set artifact perms"); err != nil {
+				return fail("set artifact perms "+art.Filename, err)
+			}
+			cmd = fmt.Sprintf("mv -f %s %s", shellQuote(tmp), shellQuote(final))
+			if _, err := e.ssh.RunCommand(ctx, opts, cmd); err != nil {
+				return fail("move artifact into place", err)
+			}
+		}
+	}
+
+	// 6. Validation command.
 	if hasFiles && d.ValidationCmd != "" {
 		log.Debug("running validation command")
 		if _, err := e.ssh.RunCommand(ctx, opts, d.ValidationCmd); err != nil {
@@ -231,7 +252,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		}
 	}
 
-	// 6. Reload command.
+	// 7. Reload command.
 	if hasFiles && d.ReloadCmd != "" {
 		log.Debug("running reload command")
 		if _, err := e.ssh.RunCommand(ctx, opts, d.ReloadCmd); err != nil {
@@ -239,7 +260,7 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		}
 	}
 
-	// 7. Record success and current certificate fingerprint.
+	// 8. Record success and current certificate fingerprint.
 	if hasFiles && d.CertificateName != "" {
 		fp, fpErr := acme.Fingerprint(filepath.Join(d.CertificateBase, d.CertificateName+".fullchain"))
 		if fpErr == nil {
