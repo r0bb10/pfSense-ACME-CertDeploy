@@ -323,7 +323,7 @@ func (d *Daemon) scanACME() {
 	}
 
 	for _, id := range ids {
-		d.logger.Info("auto-deploying outdated deployment", slog.String("deployment", id))
+		d.logger.Debug("auto-deploying outdated deployment", slog.String("deployment", id))
 		go d.runDeployment(id)
 	}
 }
@@ -342,7 +342,7 @@ func (d *Daemon) reconcile() {
 	}
 
 	for _, id := range ids {
-		d.logger.Info("reconciling outdated deployment", slog.String("deployment", id))
+		d.logger.Debug("reconciling outdated deployment", slog.String("deployment", id))
 		go d.runDeployment(id)
 	}
 }

@@ -9,13 +9,8 @@ import (
 	"sync"
 )
 
-// logHandler is a compact, human-readable slog.Handler. It formats records as:
-//
-//	2026-08-07 16:12:33  INFO  certdeployd starting version=0.1.2 component=daemon
-//
-// Severity and msg are emitted bare; level is right-padded so the message column
-// stays aligned across levels. Time/level/msg are written once by the handler, so
-// the default slog `time`/`level`/`msg` keys are never repeated.
+// logHandler renders concise operator-facing records. Debug records retain every
+// structured attribute for troubleshooting.
 type logHandler struct {
 	mu    *sync.Mutex
 	w     io.Writer
@@ -34,12 +29,21 @@ func (h *logHandler) Enabled(_ context.Context, l slog.Level) bool {
 }
 
 func (h *logHandler) Handle(_ context.Context, r slog.Record) error {
+	attrs := map[string]slog.Value{}
+	for _, attr := range h.attrs {
+		attrs[attr.Key] = attr.Value
+	}
+	r.Attrs(func(attr slog.Attr) bool {
+		attrs[attr.Key] = attr.Value
+		return true
+	})
+
 	var b strings.Builder
 	b.WriteString(r.Time.Format("2006-01-02 15:04:05"))
 	b.WriteString("  ")
 	_, _ = fmt.Fprintf(&b, "%-5s", strings.ToUpper(r.Level.String()))
 	b.WriteString("  ")
-	b.WriteString(r.Message)
+	b.WriteString(logMessage(r.Message, attrs))
 
 	writeAttr := func(a slog.Attr) {
 		if a.Equal(slog.Attr{}) {
@@ -51,19 +55,60 @@ func (h *logHandler) Handle(_ context.Context, r slog.Record) error {
 		b.WriteString(valueString(a.Value))
 	}
 
-	for _, a := range h.attrs {
-		writeAttr(a)
+	if r.Level == slog.LevelDebug {
+		for _, a := range h.attrs {
+			writeAttr(a)
+		}
+		r.Attrs(func(a slog.Attr) bool {
+			writeAttr(a)
+			return true
+		})
 	}
-	r.Attrs(func(a slog.Attr) bool {
-		writeAttr(a)
-		return true
-	})
 	b.WriteString("\n")
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	_, err := io.WriteString(h.w, b.String())
 	return err
+}
+
+func logMessage(message string, attrs map[string]slog.Value) string {
+	prefix := ""
+	if name, ok := attrs["name"]; ok {
+		prefix = "[" + name.String()
+		if host, ok := attrs["host"]; ok {
+			prefix += "@" + host.String()
+		}
+		prefix += "] "
+	} else if component, ok := attrs["component"]; ok && component.String() == "daemon" {
+		prefix = "[daemon] "
+	}
+
+	switch message {
+	case "certdeployd starting":
+		if version, ok := attrs["version"]; ok {
+			return prefix + "Daemon started (v" + version.String() + ")"
+		}
+		return prefix + "Daemon started"
+	case "shutting down":
+		return prefix + "Daemon stopped"
+	case "starting deployment":
+		return prefix + "Deployment started"
+	case "deployment completed":
+		return prefix + "Deployment completed"
+	case "deployment failed; retrying":
+		if attempt, ok := attrs["attempt"]; ok {
+			return prefix + "Deployment failed; retrying (attempt " + valueString(attempt) + ")"
+		}
+		return prefix + "Deployment failed; retrying"
+	case "host key fingerprint changed":
+		return prefix + "Host key accepted"
+	default:
+		if err, ok := attrs["error"]; ok {
+			return prefix + message + ": " + valueString(err)
+		}
+		return prefix + message
+	}
 }
 
 func valueString(v slog.Value) string {
