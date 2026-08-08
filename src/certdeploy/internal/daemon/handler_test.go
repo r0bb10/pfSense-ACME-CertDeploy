@@ -13,7 +13,7 @@ func TestLogHandler(t *testing.T) {
 	l := slog.New(h)
 	ctx := context.Background()
 
-	l.Log(ctx, slog.LevelInfo, "certdeployd starting", slog.String("version", "0.1.2"), slog.String("component", "daemon"))
+	l.Log(ctx, slog.LevelInfo, "certdeployd starting", slog.String("version", "2026.8.1"), slog.String("component", "daemon"))
 	l.Log(ctx, slog.LevelDebug, "retry", slog.Int("attempt", 3))
 	l.Log(ctx, slog.LevelError, "failed to connect", slog.String("target", "n100"), slog.String("error", "exit status 1"))
 

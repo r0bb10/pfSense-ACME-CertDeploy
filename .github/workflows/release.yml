@@ -3,11 +3,11 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - '20*.*.*'
   workflow_dispatch:
     inputs:
       version:
-        description: Version to release (e.g. 0.0.1). Leave empty to use the current tag.
+        description: Calendar version to release (e.g. 2026.8.1). Leave empty to use the current tag.
         required: false
         type: string
 
@@ -68,13 +68,17 @@ jobs:
           if [ -n "${VERSION_INPUT}" ]; then
             version="${VERSION_INPUT}"
           else
-            version="${TAG#v}"
+            version="${TAG}"
+          fi
+          if ! printf '%s\n' "${version}" | grep -Eq '^20[0-9]{2}\.(1[0-2]|[1-9])\.[0-9]+$'; then
+            echo "Version must use YYYY.M.PATCH calendar versioning, for example 2026.8.1." >&2
+            exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Check existing release
         id: check
         env:
-          RELEASE_TAG: pfsense-${{ steps.resolve.outputs.version }}
+          RELEASE_TAG: ${{ steps.resolve.outputs.version }}
         uses: actions/github-script@v9.0.0
         with:
           script: |
@@ -131,7 +135,7 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3.0.2
         with:
-          tag_name: pfsense-${{ needs.prepare.outputs.version }}
+          tag_name: ${{ needs.prepare.outputs.version }}
           name: pfSense CertDeploy ${{ needs.prepare.outputs.version }}
           body: |
             pfSense package for CertDeploy ``${{ needs.prepare.outputs.version }}`` built for FreeBSD 15 amd64.
@@ -140,7 +144,7 @@ jobs:
 
             ```
             curl -fSL -o /tmp/pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg \
-              "https://github.com/r0bb10/pfSense-ACME-CertDeploy/releases/download/pfsense-${{ needs.prepare.outputs.version }}/pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg"
+              "https://github.com/r0bb10/pfSense-ACME-CertDeploy/releases/download/${{ needs.prepare.outputs.version }}/pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg"
 
             /usr/local/sbin/pkg-static add -f /tmp/pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg
             ```

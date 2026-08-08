@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PORTNAME=	pfSense-pkg-CertDeploy
-PORTVERSION=	0.0.0
+PORTVERSION=	2026.8.1
 PORTREVISION=	0
 CATEGORIES=	security
 MASTER_SITES=	# empty

@@ -87,7 +87,7 @@ func logMessage(message string, attrs map[string]slog.Value) string {
 	switch message {
 	case "certdeployd starting":
 		if version, ok := attrs["version"]; ok {
-			return prefix + "Daemon started (v" + version.String() + ")"
+			return prefix + "Daemon started (" + version.String() + ")"
 		}
 		return prefix + "Daemon started"
 	case "shutting down":
