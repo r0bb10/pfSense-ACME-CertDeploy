@@ -8,7 +8,7 @@
 	<addedit_string>Acme Deployer: changed settings</addedit_string>
 	<include_file>/usr/local/pkg/certdeploy.inc</include_file>
 	<configpath>installedpackages->certdeploy->config</configpath>
-	<aftersaveredirect>/certdeploy/certdeploy_general.php</aftersaveredirect>
+	<aftersaveredirect>/certdeploy/certdeploy_settings.php</aftersaveredirect>
 	<service>
 		<name>certdeploy</name>
 		<rcfile>certdeploy</rcfile>
@@ -19,12 +19,12 @@
 		<name>Acme Deployer</name>
 		<section>Services</section>
 		<configfile>certdeploy.xml</configfile>
-		<url>/certdeploy/certdeploy_general.php</url>
+		<url>/certdeploy/certdeploy_settings.php</url>
 	</menu>
 	<tabs>
 		<tab>
-			<text>General</text>
-			<url>/certdeploy/certdeploy_general.php</url>
+			<text>Settings</text>
+			<url>/certdeploy/certdeploy_settings.php</url>
 			<active/>
 		</tab>
 		<tab>
@@ -32,7 +32,11 @@
 			<url>/certdeploy/certdeploy_deployments.php</url>
 		</tab>
 		<tab>
-			<text>Log</text>
+			<text>Status</text>
+			<url>/certdeploy/certdeploy_status.php</url>
+		</tab>
+		<tab>
+			<text>Logs</text>
 			<url>/certdeploy/certdeploy_log.php</url>
 		</tab>
 	</tabs>

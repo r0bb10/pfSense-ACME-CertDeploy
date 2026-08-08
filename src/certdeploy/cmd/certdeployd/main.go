@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 
@@ -17,7 +18,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		log.Printf("certdeployd %s", version)
+		fmt.Printf("%s\n", version)
 		os.Exit(0)
 	}
 

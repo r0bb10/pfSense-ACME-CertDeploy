@@ -23,13 +23,13 @@ if ($_POST) {
 		config_set_path('installedpackages/certdeploy/config/0', certdeploy_general_build($_POST));
 		write_config('CertDeploy general settings updated');
 		certdeploy_sync();
-		header('Location: /certdeploy/certdeploy_general.php');
+		header('Location: /certdeploy/certdeploy_settings.php');
 		exit;
 	}
 	$settings = certdeploy_general_build($_POST);
 }
 
-$pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('General')];
+$pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Settings')];
 include('head.inc');
 
 if (!empty($input_errors)) {
@@ -37,18 +37,13 @@ if (!empty($input_errors)) {
 }
 
 $tab_array = [
-	[gettext('General'), true, '/certdeploy/certdeploy_general.php'],
+	[gettext('Settings'), true, '/certdeploy/certdeploy_settings.php'],
 	[gettext('Deployments'), false, '/certdeploy/certdeploy_deployments.php'],
-	[gettext('Log'), false, '/certdeploy/certdeploy_log.php'],
+	[gettext('Status'), false, '/certdeploy/certdeploy_status.php'],
+	[gettext('Logs'), false, '/certdeploy/certdeploy_log.php'],
 ];
+
 display_top_tabs($tab_array);
-
-$runtime_state = certdeploy_global_state();
-$deployments = certdeploy_deployments();
-$acme_certs = certdeploy_acme_certificates();
-
-$last_scan = $runtime_state['last_scan_time'] ?? 0;
-$last_reconcile = $runtime_state['last_reconcile_time'] ?? 0;
 
 ?>
 
@@ -62,96 +57,8 @@ $service_section->addInput(new Form_Checkbox(
 	gettext('Enable CertDeploy daemon'),
 	($settings['enable'] ?? '') === 'on'
 ));
-$service_section->addInput(new Form_StaticText(
-	gettext('Daemon State'),
-	is_service_running('certdeploy') ? gettext('Running') : gettext('Stopped')
-));
-$service_section->addInput(new Form_StaticText(
-	gettext('Last ACME Scan'),
-	$last_scan > 0 ? date('Y-m-d H:i:s', $last_scan) : gettext('Never')
-));
-$service_section->addInput(new Form_StaticText(
-	gettext('Last Reconcile'),
-	$last_reconcile > 0 ? date('Y-m-d H:i:s', $last_reconcile) : gettext('Never')
-));
 print($service_section);
 ?>
-
-<div class="panel panel-default">
-	<div class="panel-heading">
-		<h2 class="panel-title"><?=gettext('ACME Certificates')?></h2>
-	</div>
-	<div class="panel-body table-responsive">
-		<table class="table table-hover table-striped table-condensed">
-			<thead>
-				<tr>
-					<th><?=gettext('Name')?></th>
-					<th><?=gettext('Status')?></th>
-					<th><?=gettext('Valid From')?></th>
-					<th><?=gettext('Valid To')?></th>
-					<th><?=gettext('Last Renewed')?></th>
-				</tr>
-			</thead>
-			<tbody>
-<?php if (count($acme_certs) > 0): ?>
-<?php foreach ($acme_certs as $name => $cert): ?>
-				<tr>
-					<td><?=htmlspecialchars($name)?></td>
-					<td><?=htmlspecialchars($cert['status'])?></td>
-					<td><?=htmlspecialchars($cert['valid_from'])?></td>
-					<td><?=htmlspecialchars($cert['valid_to'])?></td>
-					<td><?=$cert['lastrenewal'] > 0 ? date('Y-m-d H:i:s', $cert['lastrenewal']) : gettext('Never')?></td>
-				</tr>
-<?php endforeach; ?>
-<?php else: ?>
-				<tr>
-					<td colspan="5"><?=gettext('No ACME certificates found.')?></td>
-				</tr>
-<?php endif; ?>
-			</tbody>
-		</table>
-	</div>
-</div>
-
-<div class="panel panel-default">
-	<div class="panel-heading">
-		<h2 class="panel-title"><?=gettext('Deployments Sync Status')?></h2>
-	</div>
-	<div class="panel-body table-responsive">
-		<table class="table table-hover table-striped table-condensed">
-			<thead>
-				<tr>
-					<th><?=gettext('Deployment')?></th>
-					<th><?=gettext('Target')?></th>
-					<th><?=gettext('Certificate')?></th>
-					<th><?=gettext('Last Deploy')?></th>
-					<th><?=gettext('Status')?></th>
-				</tr>
-			</thead>
-			<tbody>
-<?php if (count($deployments) > 0): ?>
-<?php foreach ($deployments as $dep):
-	$status_text = certdeploy_deployment_status_text($dep);
-	$sync = certdeploy_deployment_sync_status($dep);
-	$last_deploy = $status_text['time'] > 0 ? date('Y-m-d H:i:s', $status_text['time']) : gettext('Never');
-?>
-				<tr>
-					<td><?=htmlspecialchars($dep['name'] ?? '')?></td>
-					<td><?=htmlspecialchars(($dep['host'] ?? '') . ':' . ($dep['port'] ?? 22))?></td>
-					<td><?=htmlspecialchars($dep['certificate_name'] ?? gettext('None'))?></td>
-					<td><?=htmlspecialchars($last_deploy)?></td>
-					<td><?=htmlspecialchars($sync['message'])?></td>
-				</tr>
-<?php endforeach; ?>
-<?php else: ?>
-				<tr>
-					<td colspan="5"><?=gettext('No deployments configured.')?></td>
-				</tr>
-<?php endif; ?>
-			</tbody>
-		</table>
-	</div>
-</div>
 
 <?php
 $advanced_section = new Form_Section(gettext('Advanced'), 'advanced-panel', COLLAPSIBLE|SEC_CLOSED);

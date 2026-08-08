@@ -92,9 +92,10 @@ if (!empty($savemsg)) {
 }
 
 $tab_array = [
-	[gettext('General'), false, '/certdeploy/certdeploy_general.php'],
+	[gettext('Settings'), false, '/certdeploy/certdeploy_settings.php'],
 	[gettext('Deployments'), true, '/certdeploy/certdeploy_deployments.php'],
-	[gettext('Log'), false, '/certdeploy/certdeploy_log.php'],
+	[gettext('Status'), false, '/certdeploy/certdeploy_status.php'],
+	[gettext('Logs'), false, '/certdeploy/certdeploy_log.php'],
 ];
 display_top_tabs($tab_array);
 

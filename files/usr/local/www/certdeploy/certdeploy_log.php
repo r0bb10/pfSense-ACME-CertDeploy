@@ -7,10 +7,6 @@ require_once('certdeploy.inc');
 
 const CERTDEPLOY_DISPLAY_LOG_LINES = 100;
 
-function certdeploy_log_escape($value) {
-	return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-}
-
 if (isset($_GET['ajax'])) {
 	header('Content-Type: application/json');
 	header('Cache-Control: no-store');
@@ -22,13 +18,14 @@ if (isset($_GET['ajax'])) {
 
 $shortcut_section = 'certdeploy';
 
-$pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Log')];
+$pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Logs')];
 include('head.inc');
 
 $tab_array = [
-	[gettext('General'), false, '/certdeploy/certdeploy_general.php'],
+	[gettext('Settings'), false, '/certdeploy/certdeploy_settings.php'],
 	[gettext('Deployments'), false, '/certdeploy/certdeploy_deployments.php'],
-	[gettext('Log'), true, '/certdeploy/certdeploy_log.php'],
+	[gettext('Status'), false, '/certdeploy/certdeploy_status.php'],
+	[gettext('Logs'), true, '/certdeploy/certdeploy_log.php'],
 ];
 display_top_tabs($tab_array);
 
