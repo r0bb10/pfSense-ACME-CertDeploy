@@ -72,6 +72,7 @@ stage() {
 	install -m 0644 "${FILES}${PREFIX}/pkg/certdeploy/certdeploy_identities.inc" "${STAGE}${PREFIX}/pkg/certdeploy/certdeploy_identities.inc"
 	install -m 0644 "${FILES}${PREFIX}/pkg/certdeploy/certdeploy_deployments.inc" "${STAGE}${PREFIX}/pkg/certdeploy/certdeploy_deployments.inc"
 	install -m 0644 "${FILES}${PREFIX}/pkg/certdeploy/certdeploy_log.inc" "${STAGE}${PREFIX}/pkg/certdeploy/certdeploy_log.inc"
+	install -m 0644 "${FILES}${PREFIX}/pkg/certdeploy/certdeploy_backup.inc" "${STAGE}${PREFIX}/pkg/certdeploy/certdeploy_backup.inc"
 	install -m 0644 "${FILES}${PREFIX}/share/${PORTNAME}/info.xml" "${STAGE}${PREFIX}/share/${PORTNAME}/info.xml"
 	install -m 0644 "${FILES}${PREFIX}/www/shortcuts/pkg_certdeploy.inc" "${STAGE}${PREFIX}/www/shortcuts/pkg_certdeploy.inc"
 	install -m 0644 "${FILES}/etc/inc/priv/certdeploy.priv.inc" "${STAGE}/etc/inc/priv/certdeploy.priv.inc"

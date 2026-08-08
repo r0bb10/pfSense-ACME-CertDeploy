@@ -10,6 +10,7 @@ require_once('certdeploy/certdeploy_acme.inc');
 require_once('certdeploy/certdeploy_identities.inc');
 require_once('certdeploy/certdeploy_deployments.inc');
 require_once('certdeploy/certdeploy_log.inc');
+require_once('certdeploy/certdeploy_backup.inc');
 
 const CERTDEPLOY_CONFIG_DIR = '/usr/local/etc/certdeploy';
 const CERTDEPLOY_KEYS_DIR = '/usr/local/etc/certdeploy/keys';

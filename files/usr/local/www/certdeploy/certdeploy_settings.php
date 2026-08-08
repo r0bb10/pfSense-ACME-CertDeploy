@@ -8,6 +8,10 @@ require_once('certdeploy.inc');
 
 $shortcut_section = 'certdeploy';
 
+if (isset($_GET['download'])) {
+	certdeploy_backup_download();
+}
+
 $settings = certdeploy_settings();
 $defaults = certdeploy_general_defaults();
 foreach ($defaults as $k => $v) {
@@ -18,6 +22,34 @@ foreach ($defaults as $k => $v) {
 
 if ($_POST) {
 	$input_errors = [];
+
+	if (isset($_POST['restore'])) {
+		if (is_uploaded_file($_FILES['restore_file']['tmp_name'] ?? '')) {
+			$json = file_get_contents($_FILES['restore_file']['tmp_name']);
+			$parsed = certdeploy_backup_parse($json);
+			if (isset($parsed['error'])) {
+				$input_errors[] = $parsed['error'];
+			} else {
+				$errors = certdeploy_backup_restore($parsed['data']);
+				if (!empty($errors)) {
+					$input_errors = array_merge($input_errors, $errors);
+				} else {
+					header('Location: /certdeploy/certdeploy_status.php');
+					exit;
+				}
+			}
+		} else {
+			$input_errors[] = gettext('Please choose a CertDeploy backup file to restore.');
+		}
+		if (!empty($input_errors)) {
+			$pgtitle = [gettext('Services'), gettext('CertDeploy'), gettext('Settings')];
+			include('head.inc');
+			print_input_errors($input_errors);
+			include('foot.inc');
+			exit;
+		}
+	}
+
 	certdeploy_general_validate($_POST, $input_errors);
 	if (empty($input_errors)) {
 		config_set_path('installedpackages/certdeploy/config/0', certdeploy_general_build($_POST));
@@ -144,6 +176,40 @@ print($advanced_section);
 	</button>
 </div>
 
+</form>
+
+<?php
+$backup_section = new Form_Section(gettext('Backup / Restore'), 'backup-panel', COLLAPSIBLE|SEC_CLOSED);
+$backup_section->addInput(new Form_StaticText(
+	'',
+	gettext('Download the full CertDeploy configuration, including identities, targets, and private keys. Upload a backup to restore after a reinstall.')
+));
+print($backup_section);
+?>
+
+<form method="get" action="/certdeploy/certdeploy_settings.php" class="form-horizontal">
+	<div class="form-group">
+		<label class="col-sm-2 control-label"><?=gettext('Backup')?></label>
+		<div class="col-sm-10">
+			<button type="submit" name="download" value="1" class="btn btn-info btn-sm">
+				<i class="fa-solid fa-download icon-embed-btn"></i>
+				<?=gettext('Download Config')?>
+			</button>
+		</div>
+	</div>
+</form>
+
+<form method="post" action="/certdeploy/certdeploy_settings.php" enctype="multipart/form-data" class="form-horizontal">
+	<div class="form-group">
+		<label class="col-sm-2 control-label"><?=gettext('Restore')?></label>
+		<div class="col-sm-10">
+			<input type="file" name="restore_file" accept=".json,application/json" class="form-control" />
+			<button type="submit" name="restore" value="1" class="btn btn-primary btn-sm" style="margin-top: 8px;">
+				<i class="fa-solid fa-upload icon-embed-btn"></i>
+				<?=gettext('Restore Config')?>
+			</button>
+		</div>
+	</div>
 </form>
 
 <?php include('foot.inc');
