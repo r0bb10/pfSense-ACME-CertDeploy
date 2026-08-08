@@ -8,8 +8,29 @@ $shortcut_section = 'certdeploy';
 
 $ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
 
-if ($_POST && isset($_POST['act'], $_POST['id'])) {
-	$id = $_POST['id'];
+if ($_POST && isset($_POST['act'])) {
+	$id = $_POST['id'] ?? '';
+
+	// Reorder actions (no single id needed)
+	if ($_POST['act'] === 'order') {
+		$changed = false;
+		if (isset($_POST['identity_order'])) {
+			$changed |= certdeploy_reorder_items('installedpackages/certdeploy/identities/item', $_POST['identity_order']);
+		}
+		if (isset($_POST['deployment_order'])) {
+			$changed |= certdeploy_reorder_items('installedpackages/certdeploy/deployments/item', $_POST['deployment_order']);
+		}
+		if ($changed) {
+			write_config('CertDeploy items reordered');
+			certdeploy_sync();
+		}
+		if ($ajax) {
+			echo 'ok';
+			exit;
+		}
+		header('Location: /certdeploy/certdeploy_deployments.php');
+		exit;
+	}
 
 	// Identity actions
 	foreach (certdeploy_identities() as $idx => $ident) {
@@ -101,14 +122,14 @@ display_top_tabs($tab_array);
 					<th><?=gettext('Actions')?></th>
 				</tr>
 			</thead>
-			<tbody>
+			<tbody id="identity-sortable">
 <?php
 $identities = certdeploy_identities();
 if (count($identities) > 0):
 	foreach ($identities as $idx => $ident):
 		$id = htmlspecialchars($ident['id'] ?? '');
 ?>
-				<tr>
+				<tr data-id="<?=$id?>">
 					<td><?=htmlspecialchars($ident['name'] ?? '')?></td>
 					<td><?=htmlspecialchars($ident['description'] ?? '')?></td>
 					<td><?=htmlspecialchars($ident['key_type'] ?? '')?></td>
@@ -139,6 +160,10 @@ else:
 		<i class="fa-solid fa-plus icon-embed-btn"></i>
 		<?=gettext('Add Identity')?>
 	</a>
+	<a href="javascript:certdeploy_save_order('identity')" class="btn btn-sm btn-primary hidden" id="identity-save-order-btn">
+		<i class="fa-solid fa-floppy-disk icon-embed-btn"></i>
+		<?=gettext('Save Order')?>
+	</a>
 </nav>
 
 <div class="panel panel-default">
@@ -158,7 +183,7 @@ else:
 					<th><?=gettext('Actions')?></th>
 				</tr>
 			</thead>
-			<tbody>
+			<tbody id="deployment-sortable">
 <?php
 $deployments = certdeploy_deployments();
 if (count($deployments) > 0):
@@ -167,7 +192,7 @@ if (count($deployments) > 0):
 		$enabled = ($dep['enabled'] ?? '') === 'on';
 		$state = certdeploy_deployment_state($dep);
 ?>
-				<tr <?=$enabled ? '' : 'class="disabled"'?>>
+				<tr <?=$enabled ? '' : 'class="disabled"'?> data-id="<?=$id?>">
 					<td>
 						<a href="?act=toggle&amp;id=<?=$id?>" usepost>
 							<i class="fa-solid fa-check" title="<?=gettext('click to toggle enabled/disabled status')?>"></i>
@@ -215,6 +240,10 @@ else:
 		<i class="fa-solid fa-plus icon-embed-btn"></i>
 		<?=gettext('Add Target')?>
 	</a>
+	<a href="javascript:certdeploy_save_order('deployment')" class="btn btn-sm btn-primary hidden" id="deployment-save-order-btn">
+		<i class="fa-solid fa-floppy-disk icon-embed-btn"></i>
+		<?=gettext('Save Order')?>
+	</a>
 </nav>
 
 <script type="text/javascript">
@@ -237,6 +266,42 @@ function certdeploy_deploy(id) {
 		}
 	});
 }
+
+function certdeploy_save_order(type) {
+	var tbody = '#' + type + '-sortable';
+	var ids = $(tbody + ' tr[data-id]').map(function() {
+		return $(this).attr('data-id');
+	}).get();
+	var field = type === 'identity' ? 'identity_order' : 'deployment_order';
+	var data = { act: 'order' };
+	data[field] = ids;
+	$.ajax({
+		url: "/certdeploy/certdeploy_deployments.php",
+		type: "post",
+		data: data,
+		success: function() {
+			$('#' + type + '-save-order-btn').addClass('hidden');
+			$("#deployoutputbox").removeClass("hidden");
+			$("#deployoutput").text("<?=gettext('Order saved.')?>");
+		},
+		error: function() {
+			$("#deployoutputbox").removeClass("hidden").addClass("alert-danger");
+			$("#deployoutput").text("<?=gettext('Failed to save order.')?>");
+		}
+	});
+}
+
+events.push(function() {
+	$('#identity-sortable, #deployment-sortable').sortable({
+		cursor: 'grabbing',
+		scroll: true,
+		scrollSensitivity: 100,
+		update: function(event, ui) {
+			var type = ui.item.closest('tbody').attr('id').replace('-sortable', '');
+			$('#' + type + '-save-order-btn').removeClass('hidden');
+		}
+	});
+});
 //]]>
 </script>
 

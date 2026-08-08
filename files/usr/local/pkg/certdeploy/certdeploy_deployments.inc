@@ -227,4 +227,42 @@ function certdeploy_deployment_build($post, $old = []) {
 	return $dep;
 }
 
+// Reorder an indexed item list (identities or deployments) by the given
+// ordered IDs. Any items not listed keep their relative order at the end.
+function certdeploy_reorder_items($base_path, $ordered_ids) {
+	$items = config_get_path($base_path, []);
+	if (!is_array($items) || empty($items)) {
+		return false;
+	}
+
+	$by_id = [];
+	foreach ($items as $item) {
+		$by_id[$item['id'] ?? ''] = $item;
+	}
+
+	$new = [];
+	$seen = [];
+	foreach ($ordered_ids as $id) {
+		if (isset($by_id[$id])) {
+			$new[] = $by_id[$id];
+			$seen[$id] = true;
+		}
+	}
+
+	// Append any items not referenced in the posted order.
+	foreach ($items as $item) {
+		$id = $item['id'] ?? '';
+		if (!isset($seen[$id])) {
+			$new[] = $item;
+		}
+	}
+
+	if (count($new) !== count($items)) {
+		return false;
+	}
+
+	config_set_path($base_path, $new);
+	return true;
+}
+
 ?>
