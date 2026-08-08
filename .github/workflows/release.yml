@@ -120,8 +120,6 @@ jobs:
             ./build.sh package
             version="${PORTVERSION}"
             cp build/pkg/*.pkg ./pfSense-pkg-CertDeploy-${version}.pkg
-      - name: Generate checksums
-        run: sha256sum pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg > SHA256SUMS
       - name: Attest package
         uses: actions/attest-build-provenance@v4.2.2
         with:
@@ -129,14 +127,12 @@ jobs:
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}
-          path: |
-            pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg
-            SHA256SUMS
+          path: pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3.0.2
         with:
           tag_name: ${{ needs.prepare.outputs.version }}
-          name: pfSense CertDeploy ${{ needs.prepare.outputs.version }}
+          name: "${{ needs.prepare.outputs.version }}"
           body: |
             pfSense package for CertDeploy ``${{ needs.prepare.outputs.version }}`` built for FreeBSD 15 amd64.
 
@@ -151,4 +147,3 @@ jobs:
           overwrite_files: true
           files: |
             pfSense-pkg-CertDeploy-${{ needs.prepare.outputs.version }}.pkg
-            SHA256SUMS

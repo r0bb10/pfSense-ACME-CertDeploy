@@ -1,6 +1,0 @@
-Native pfSense package that deploys ACME certificates to remote hosts over SSH.
-
-CertDeploy monitors the pfSense ACME package, detects certificate changes, and
-pushes certificate files to configured SSH targets automatically or on demand.
-
-WWW: https://github.com/r0bb10/pfSense-CertDeploy

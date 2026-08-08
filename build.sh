@@ -109,7 +109,7 @@ abi: "${ABI}"
 desc: "Native pfSense package that deploys ACME certificates to remote hosts over SSH."
 www: "https://github.com/r0bb10/pfSense-ACME-CertDeploy"
 licenselogic: "single"
-licenses: ["APACHE20"]
+licenses: ["MIT"]
 categories: ["security"]
 scripts: {
   post-install: "${post_install_script}",
