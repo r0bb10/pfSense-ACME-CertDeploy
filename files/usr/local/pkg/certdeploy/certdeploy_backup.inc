@@ -4,6 +4,16 @@ function certdeploy_backup_password_is_valid($password) {
 	return is_string($password) && strlen($password) >= 12;
 }
 
+function certdeploy_backup_config_with_host_keys($config, $runtime_state) {
+	// Runtime pins are authoritative, but a restored installation may not have
+	// state.json. Export them as legacy seeds without changing the live config.
+	foreach ($config['deployments']['item'] ?? [] as $index => $dep) {
+		$recorded = $runtime_state['deployments'][$dep['id'] ?? '']['host_key_fingerprint'] ?? '';
+		$config['deployments']['item'][$index]['host_key_fingerprint'] = certdeploy_deployment_host_key_fingerprint($dep, ['host_key_fingerprint' => $recorded]);
+	}
+	return $config;
+}
+
 function certdeploy_backup_build($password) {
 	if (!certdeploy_backup_password_is_valid($password)) {
 		return ['error' => gettext('Backup passphrase must be at least 12 characters.')];
@@ -12,6 +22,7 @@ function certdeploy_backup_build($password) {
 	if (!is_array($config)) {
 		$config = [];
 	}
+	$config = certdeploy_backup_config_with_host_keys($config, certdeploy_global_state());
 
 	$keys = [];
 	foreach ($config['identities']['item'] ?? [] as $ident) {

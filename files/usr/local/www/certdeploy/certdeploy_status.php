@@ -20,6 +20,25 @@ function certdeploy_status_version() {
 	return trim(certdeploy_status_command_output(CERTDEPLOY_DAEMON_BIN . ' --version'));
 }
 
+function certdeploy_status_rows() {
+	$rows = [];
+	foreach (certdeploy_deployments() as $dep) {
+		$status = certdeploy_deployment_status_text($dep);
+		$sync = certdeploy_deployment_sync_status($dep);
+		$rows[] = [
+			'id' => $dep['id'] ?? '',
+			'name' => $dep['name'] ?? '',
+			'target' => ($dep['host'] ?? '') . ':' . ($dep['port'] ?? 22),
+			'certificate' => $dep['certificate_name'] ?? gettext('None'),
+			'last_deploy' => $status['time'] > 0 ? date('Y-m-d H:i:s', $status['time']) : gettext('Never'),
+			'last_verified' => $sync['time'] > 0 ? date('Y-m-d H:i:s', $sync['time']) : gettext('Never'),
+			'status' => $sync['message'],
+			'verification_detail' => $sync['detail'],
+		];
+	}
+	return $rows;
+}
+
 if (isset($_GET['ajax'])) {
 	header('Content-Type: application/json');
 	header('Cache-Control: no-store');
@@ -31,6 +50,7 @@ if (isset($_GET['ajax'])) {
 		'version' => certdeploy_status_version(),
 		'last_scan_time' => (int)($runtime_state['last_scan_time'] ?? 0),
 		'last_reconcile_time' => (int)($runtime_state['last_reconcile_time'] ?? 0),
+		'deployments' => certdeploy_status_rows(),
 	]);
 	exit;
 }
@@ -48,7 +68,7 @@ $tab_array = [
 ];
 display_top_tabs($tab_array);
 
-$deployments = certdeploy_deployments();
+$deployments = certdeploy_status_rows();
 $acme_certs = certdeploy_acme_certificates();
 
 ?>
@@ -112,27 +132,25 @@ $acme_certs = certdeploy_acme_certificates();
 					<th><?=gettext('Target')?></th>
 					<th><?=gettext('Certificate')?></th>
 					<th><?=gettext('Last Deploy')?></th>
+					<th><?=gettext('Last Verified')?></th>
 					<th><?=gettext('Status')?></th>
 				</tr>
 			</thead>
 			<tbody>
 <?php if (count($deployments) > 0): ?>
-<?php foreach ($deployments as $dep):
-	$status_text = certdeploy_deployment_status_text($dep);
-	$sync = certdeploy_deployment_sync_status($dep);
-	$last_deploy = $status_text['time'] > 0 ? date('Y-m-d H:i:s', $status_text['time']) : gettext('Never');
-?>
-				<tr>
-					<td><?=htmlspecialchars($dep['name'] ?? '')?></td>
-					<td><?=htmlspecialchars(($dep['host'] ?? '') . ':' . ($dep['port'] ?? 22))?></td>
-					<td><?=htmlspecialchars($dep['certificate_name'] ?? gettext('None'))?></td>
-					<td><?=htmlspecialchars($last_deploy)?></td>
-					<td><?=htmlspecialchars($sync['message'])?></td>
+<?php foreach ($deployments as $dep): ?>
+				<tr data-deployment-id="<?=htmlspecialchars($dep['id'])?>">
+					<td><?=htmlspecialchars($dep['name'])?></td>
+					<td><?=htmlspecialchars($dep['target'])?></td>
+					<td><?=htmlspecialchars($dep['certificate'])?></td>
+					<td class="certdeploy-last-deploy"><?=htmlspecialchars($dep['last_deploy'])?></td>
+					<td class="certdeploy-last-verified"><?=htmlspecialchars($dep['last_verified'])?></td>
+					<td class="certdeploy-sync-status" title="<?=htmlspecialchars($dep['verification_detail'])?>"><?=htmlspecialchars($dep['status'])?></td>
 				</tr>
 <?php endforeach; ?>
 <?php else: ?>
 				<tr>
-					<td colspan="5"><?=gettext('No deployments configured.')?></td>
+					<td colspan="6"><?=gettext('No deployments configured.')?></td>
 				</tr>
 <?php endif; ?>
 			</tbody>
@@ -149,6 +167,16 @@ async function refreshCertDeployStatus() {
 	document.getElementById('certdeploy-version').textContent = data.version || '-';
 	document.getElementById('certdeploy-last-scan').textContent = data.last_scan_time ? new Date(data.last_scan_time * 1000).toLocaleString() : 'Never';
 	document.getElementById('certdeploy-last-reconcile').textContent = data.last_reconcile_time ? new Date(data.last_reconcile_time * 1000).toLocaleString() : 'Never';
+	const rows = new Map(Array.from(document.querySelectorAll('[data-deployment-id]'), row => [row.dataset.deploymentId, row]));
+	for (const dep of data.deployments) {
+		const row = rows.get(dep.id);
+		if (!row) continue;
+		row.querySelector('.certdeploy-last-deploy').textContent = dep.last_deploy;
+		row.querySelector('.certdeploy-last-verified').textContent = dep.last_verified;
+		const status = row.querySelector('.certdeploy-sync-status');
+		status.textContent = dep.status;
+		status.title = dep.verification_detail;
+	}
 }
 refreshCertDeployStatus();
 setInterval(refreshCertDeployStatus, 5000);

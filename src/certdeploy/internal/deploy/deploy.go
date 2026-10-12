@@ -52,6 +52,7 @@ type Deployment struct {
 	Port                   int
 	User                   string
 	IdentityPath           string
+	IdentityID             string
 	HostKeyFingerprint     string
 	HostKeyIgnoreChanges   bool
 	Timeout                int
@@ -59,6 +60,7 @@ type Deployment struct {
 	LegacySCPFallback      bool
 	DisableConnectionReuse bool
 	AutoDeploy             bool
+	VerifyFiles            bool
 	Artifacts              []Artifact
 	Destination            Destination
 	ExtraDestinations      []Destination
@@ -69,9 +71,10 @@ type Deployment struct {
 
 // RunResult contains the outcome of a deployment run.
 type RunResult struct {
-	HostKeyFingerprint string
-	CurrentFingerprint string
-	Error              error
+	HostKeyFingerprint        string
+	TrustedHostKeyFingerprint string
+	CurrentFingerprint        string
+	Error                     error
 }
 
 // Run executes the deployment and records state.
@@ -100,14 +103,11 @@ func (e *Engine) Run(ctx context.Context, d Deployment) RunResult {
 		return fail("deployment disabled", fmt.Errorf("deployment is disabled"))
 	}
 
-	hostKeyFingerprint := d.HostKeyFingerprint
-	if hostKeyFingerprint == "" && !d.HostKeyIgnoreChanges {
-		stored, err := e.state.Load()
-		if err != nil {
-			return fail("load trusted host key", err)
-		}
-		hostKeyFingerprint = stored.Deployments[d.ID].HostKeyFingerprint
+	hostKeyFingerprint, err := e.state.TrustedHostKey(d.ID, d.HostKeyFingerprint)
+	if err != nil {
+		return fail("load trusted host key", err)
 	}
+	result.TrustedHostKeyFingerprint = hostKeyFingerprint
 
 	opts := ssh.Options{
 		Host:                 d.Host,

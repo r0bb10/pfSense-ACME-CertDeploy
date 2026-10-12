@@ -19,10 +19,6 @@ if ($id !== '') {
 			break;
 		}
 	}
-	$runtime_state = certdeploy_deployment_runtime_state($id);
-	if (empty($pconfig['host_key_fingerprint']) && !empty($runtime_state['host_key_fingerprint'])) {
-		$pconfig['host_key_fingerprint'] = $runtime_state['host_key_fingerprint'];
-	}
 } elseif ($dup !== '') {
 	foreach (certdeploy_deployments() as $idx => $dep) {
 		if (($dep['id'] ?? '') === $dup) {
@@ -143,8 +139,15 @@ $section->addInput(new Form_Input(
 	'host_key_fingerprint',
 	gettext('Host Key Fingerprint'),
 	'text',
-	$pconfig['host_key_fingerprint'] ?? ''
-))->setHelp(gettext('Optional SHA256 fingerprint to pin. When empty, CertDeploy trusts the first host key and records it for later deployments.'));
+	certdeploy_deployment_host_key_fingerprint($pconfig)
+))->setReadonly()->setHelp(gettext('Recorded on first SSH connection.'));
+
+$section->addInput(new Form_Checkbox(
+	'host_key_ignore_changes',
+	gettext('Accept Host Key Changes'),
+	gettext('Accept and record a changed SSH host key on every deployment while enabled'),
+	($pconfig['host_key_ignore_changes'] ?? '') === 'on'
+))->setHelp(gettext('Use only for targets that intentionally regenerate host keys. Disable after accepting a known change to pin the newly recorded key.'));
 
 $form->add($section);
 
@@ -304,6 +307,20 @@ $group->add((new Form_Button(
 )->setHelp(gettext('The first destination is uploaded via SCP; additional destinations are copied from it on the target.'));
 $section->add($group);
 
+$section->addInput(new Form_Checkbox(
+	'auto_deploy',
+	gettext('Deploy on Renewal'),
+	gettext('Deploy when the ACME certificate changes'),
+	($pconfig['auto_deploy'] ?? '') === 'on'
+));
+
+$section->addInput(new Form_Checkbox(
+	'verify_files',
+	gettext('Verify Files'),
+	gettext('Compare remote files with local ACME files'),
+	($pconfig['verify_files'] ?? 'on') !== 'off'
+));
+
 $form->add($section);
 
 // Commands section
@@ -334,13 +351,6 @@ $form->add($section);
 
 $section = new Form_Section(gettext('Advanced'), 'advanced-panel', COLLAPSIBLE|SEC_CLOSED);
 
-$section->addInput(new Form_Checkbox(
-	'host_key_ignore_changes',
-	gettext('Accept Host Key Changes'),
-	gettext('Accept a changed host key on every deployment. Use only for targets that intentionally regenerate host keys.'),
-	($pconfig['host_key_ignore_changes'] ?? '') === 'on'
-));
-
 $section->addInput(new Form_Input(
 	'connect_timeout',
 	gettext('Connect Timeout'),
@@ -369,13 +379,6 @@ $section->addInput(new Form_Checkbox(
 	gettext('Disable Connection Reuse'),
 	gettext('Use a separate SSH connection for every file and command'),
 	($pconfig['disable_connection_reuse'] ?? '') === 'on'
-));
-
-$section->addInput(new Form_Checkbox(
-	'auto_deploy',
-	gettext('Auto Deploy'),
-	gettext('Deploy automatically when certificate fingerprint changes'),
-	($pconfig['auto_deploy'] ?? '') === 'on'
 ));
 
 $form->add($section);

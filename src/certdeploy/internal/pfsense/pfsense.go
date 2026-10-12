@@ -49,6 +49,7 @@ type deploymentXML struct {
 	LegacySCPFallback      string         `xml:"legacy_scp_fallback"`
 	DisableConnectionReuse string         `xml:"disable_connection_reuse"`
 	AutoDeploy             string         `xml:"auto_deploy"`
+	VerifyFiles            string         `xml:"verify_files"`
 	Artifacts              artifactsXML   `xml:"artifacts"`
 	Destination            destinationXML `xml:"destination"`
 	ExtraDestinations      extraDestsXML  `xml:"extra_destinations"`
@@ -164,6 +165,7 @@ func mapDeployment(raw *deploymentXML, cfg pfSenseConfig, identity *identityXML)
 		Port:                   raw.Port,
 		User:                   identity.Name,
 		IdentityPath:           identity.PrivateKeyPath,
+		IdentityID:             raw.IdentityID,
 		HostKeyFingerprint:     raw.HostKeyFingerprint,
 		HostKeyIgnoreChanges:   parseBool(raw.HostKeyIgnoreChanges),
 		Timeout:                raw.ConnectTimeout,
@@ -171,6 +173,7 @@ func mapDeployment(raw *deploymentXML, cfg pfSenseConfig, identity *identityXML)
 		LegacySCPFallback:      parseBool(raw.LegacySCPFallback),
 		DisableConnectionReuse: parseBool(raw.DisableConnectionReuse),
 		AutoDeploy:             parseBool(raw.AutoDeploy),
+		VerifyFiles:            raw.VerifyFiles == "" || parseBool(raw.VerifyFiles),
 		Destination:            mapDestination(raw.Destination),
 		PostUploadCmd:          raw.PostUploadCmd,
 		ValidationCmd:          raw.ValidationCmd,

@@ -15,10 +15,29 @@ type State struct {
 }
 
 type DeploymentState struct {
-	LastDeployedFingerprint string `json:"last_deployed_fingerprint"`
-	LastDeployedTime        int64  `json:"last_deployed_time"`
-	LastRunStatus           string `json:"last_run_status"`
-	HostKeyFingerprint      string `json:"host_key_fingerprint"`
+	LastDeployedFingerprint string           `json:"last_deployed_fingerprint"`
+	LastDeployedTime        int64            `json:"last_deployed_time"`
+	LastRunStatus           string           `json:"last_run_status"`
+	HostKeyFingerprint      string           `json:"host_key_fingerprint"`
+	FileVerification        FileVerification `json:"file_verification"`
+}
+
+// FileVerification records a read-only SSH comparison, separate from deployment.
+type FileVerification struct {
+	Status           string         `json:"status"`
+	Error            string         `json:"error,omitempty"`
+	LastCheckTime    int64          `json:"last_check_time"`
+	LastVerifiedTime int64          `json:"last_verified_time"`
+	Host             string         `json:"host"`
+	Port             int            `json:"port"`
+	IdentityID       string         `json:"identity_id"`
+	Files            []VerifiedFile `json:"files"`
+}
+
+type VerifiedFile struct {
+	Source string `json:"source"`
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 // Manager persists runtime state.
@@ -70,6 +89,31 @@ func (m *Manager) save(state *State) error {
 	return os.Rename(tmp, m.path)
 }
 
+// TrustedHostKey returns the recorded pin, seeding it from legacy configuration
+// only when no runtime pin exists. A newer accepted key must never be replaced
+// by a stale configured fingerprint when acceptance is turned off again.
+func (m *Manager) TrustedHostKey(id, legacyFingerprint string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	state, err := m.load()
+	if err != nil {
+		return "", err
+	}
+	ds := state.Deployments[id]
+	if ds.HostKeyFingerprint != "" {
+		return ds.HostKeyFingerprint, nil
+	}
+	if legacyFingerprint == "" {
+		return "", nil
+	}
+	ds.HostKeyFingerprint = legacyFingerprint
+	state.Deployments[id] = ds
+	if err := m.save(state); err != nil {
+		return "", err
+	}
+	return legacyFingerprint, nil
+}
+
 func (m *Manager) UpdateDeployment(id string, ds DeploymentState, successful bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -77,8 +121,9 @@ func (m *Manager) UpdateDeployment(id string, ds DeploymentState, successful boo
 	if err != nil {
 		return err
 	}
+	previous := state.Deployments[id]
+	ds.FileVerification = previous.FileVerification
 	if !successful {
-		previous := state.Deployments[id]
 		ds.LastDeployedFingerprint = previous.LastDeployedFingerprint
 		ds.LastDeployedTime = previous.LastDeployedTime
 		if ds.HostKeyFingerprint == "" {
@@ -87,6 +132,26 @@ func (m *Manager) UpdateDeployment(id string, ds DeploymentState, successful boo
 	}
 	state.Deployments[id] = ds
 	return m.save(state)
+}
+
+// UpdateFileVerification never changes the last deployment outcome or time.
+func (m *Manager) UpdateFileVerification(id string, result FileVerification, hostKey string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st, err := m.load()
+	if err != nil {
+		return err
+	}
+	ds := st.Deployments[id]
+	if result.Status != "verified" {
+		result.LastVerifiedTime = ds.FileVerification.LastVerifiedTime
+	}
+	ds.FileVerification = result
+	if hostKey != "" {
+		ds.HostKeyFingerprint = hostKey
+	}
+	st.Deployments[id] = ds
+	return m.save(st)
 }
 
 func (m *Manager) UpdateLastScanTime(t int64) error {

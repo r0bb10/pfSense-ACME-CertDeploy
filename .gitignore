@@ -5,3 +5,5 @@ src/certdeploy/go.sum
 *.log
 .stubs/
 .intelephenserc.json
+tests/
+src/certdeploy/**/*_test.go

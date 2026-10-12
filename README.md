@@ -43,11 +43,23 @@ Open **Services > Acme Deployer** after installation.
 5. Configure optional validation and reload commands.
 6. Enable automatic deployment if required.
 
-By default, CertDeploy records the SSH host key on first connection and requires that key on later deployments. Targets that intentionally regenerate SSH host keys can enable **Accept Host Key Changes** in Advanced settings.
+By default, CertDeploy records the SSH host key on first connection and requires that key on later deployments. **Host Key Fingerprint** in Target Connection is read-only and remains blank for new targets until a key is recorded. **Accept Host Key Changes**, directly beneath it, accepts and records changed keys on every deployment while enabled. Use it only for intentional key changes; disable it afterward to pin the newly recorded key. Runtime state is authoritative, with existing configured pins preserved as a fallback when no runtime pin exists.
+
+Reconciliation deploys outdated certificates for all enabled targets, including those with **Deploy on Renewal** disabled. The ACME monitor only deploys targets with **Deploy on Renewal** enabled. Package configuration sync applies settings and manages the daemon; it is not a remote certificate check.
+
+**Deploy on Renewal** is in **Files**, directly above **Verify Files** at the end of the section. Connection and command timeouts can be overridden per target in **Advanced**; blank or zero uses the global defaults.
+
+### File Verification
+
+After a successful deployment and during reconciliation, CertDeploy compares each configured remote file against its current local ACME artifact over SSH, including extra destinations. **Verify Files** is enabled by default and can be disabled in **Files**. It uses the existing target connection and requires no TLS endpoint settings. The remote host needs `sha256sum`, `sha256`, or `openssl`; only hashes are returned, never private-key contents.
+
+**In sync** means the latest SSH check matched all configured files. **Outdated** means a remote file differs or is missing; **Check failed** means the files could not be checked. Local file or target changes invalidate a previous match until checked again. **Last Verified** records the last successful file comparison and survives later failures. This checks files only, not running services.
+
+Failed checks use the global retry count and delay. They never trigger a deployment, rollback, or change its outcome. The last-deployed fingerprint remains internal bookkeeping for renewal-triggered pushes, not proof of remote synchronization.
 
 ## Backup
 
-Configuration backups include identities and private keys in an encrypted format. A passphrase is required to create and restore a backup.
+Configuration backups include identities, private keys, and the currently recorded SSH host key fingerprints in an encrypted format. A passphrase is required to create and restore a backup.
 
 ## License
 
